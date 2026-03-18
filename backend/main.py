@@ -38,13 +38,12 @@ active_tasks: dict[str, asyncio.Task] = {}
 @app.on_event("startup")
 async def startup():
     await init_db()
-    from search import get_search_provider, MockSearchProvider
+    from search import get_search_provider, DuckDuckGoSearchProvider
     provider = get_search_provider()
-    if isinstance(provider, MockSearchProvider):
-        logger.warning(
-            "⚠ No search API keys configured! Enrichment will return empty results. "
-            "Set GOOGLE_API_KEY + GOOGLE_CSE_ID, SERPAPI_KEY, or BRAVE_API_KEY."
-        )
+    if isinstance(provider, DuckDuckGoSearchProvider):
+        logger.info("Using DuckDuckGo search provider (free, no API key required)")
+    else:
+        logger.info(f"Using search provider: {type(provider).__name__}")
 
 
 class BatchInfo(BaseModel):
@@ -369,8 +368,7 @@ async def config_status():
         "search_configured": not is_mock,
         "search_provider": type(provider).__name__,
         "message": (
-            "No search API keys configured. Enrichment requires at least one search provider. "
-            "Set GOOGLE_API_KEY + GOOGLE_CSE_ID, SERPAPI_KEY, or BRAVE_API_KEY in your environment."
+            "No search provider available. Install duckduckgo-search or set API keys for Google/SerpAPI/Brave."
             if is_mock else f"Using {type(provider).__name__}"
         ),
     }

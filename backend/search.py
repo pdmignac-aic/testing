@@ -1,4 +1,4 @@
-"""Search API abstraction layer. Supports Google Custom Search, SerpAPI, and Brave Search."""
+"""Search API abstraction layer. Supports Google Custom Search, SerpAPI, Brave Search, and DuckDuckGo."""
 
 import httpx
 import asyncio
@@ -122,11 +122,34 @@ class BraveSearchProvider(SearchProvider):
             return results
 
 
-class MockSearchProvider(SearchProvider):
-    """Fallback mock provider when no API keys are configured."""
+class DuckDuckGoSearchProvider(SearchProvider):
+    """DuckDuckGo search provider — free, no API key required."""
 
     async def search(self, query: str, num_results: int = 5) -> list[dict]:
-        logger.info(f"Mock search (no API keys configured): {query}")
+        try:
+            from ddgs import DDGS
+            ddgs = DDGS()
+            raw_results = ddgs.text(query, max_results=num_results)
+            results = []
+            for item in raw_results:
+                results.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("href", ""),
+                        "snippet": item.get("body", ""),
+                    }
+                )
+            return results
+        except Exception as e:
+            logger.error(f"DuckDuckGo search error: {e}")
+            return []
+
+
+class MockSearchProvider(SearchProvider):
+    """Fallback mock provider when no search works."""
+
+    async def search(self, query: str, num_results: int = 5) -> list[dict]:
+        logger.info(f"Mock search (no search provider available): {query}")
         return []
 
 
@@ -139,6 +162,8 @@ def get_search_provider() -> SearchProvider:
         return SerpAPIProvider()
     elif provider == "brave" and settings.BRAVE_API_KEY:
         return BraveSearchProvider()
+    elif provider == "duckduckgo":
+        return DuckDuckGoSearchProvider()
 
     # Auto-detect based on available keys
     if settings.GOOGLE_API_KEY and settings.GOOGLE_CSE_ID:
@@ -148,8 +173,9 @@ def get_search_provider() -> SearchProvider:
     if settings.BRAVE_API_KEY:
         return BraveSearchProvider()
 
-    logger.warning("No search API keys configured — using mock provider")
-    return MockSearchProvider()
+    # Default to DuckDuckGo — free, no API key needed
+    logger.info("No search API keys configured — using DuckDuckGo (free, no key required)")
+    return DuckDuckGoSearchProvider()
 
 
 async def rate_limited_delay():
