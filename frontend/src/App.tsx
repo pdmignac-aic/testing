@@ -4,8 +4,9 @@ import PreviewTable from './components/PreviewTable';
 import ProgressBar from './components/ProgressBar';
 import ErrorLog from './components/ErrorLog';
 import ResultsTable from './components/ResultsTable';
-import { startEnrichment, getProgress } from './api';
+import { startEnrichment, getProgress, getConfigStatus } from './api';
 import type { BatchInfo, Progress } from './types';
+import type { ConfigStatus } from './api';
 import './App.css';
 
 type View = 'upload' | 'preview' | 'results';
@@ -16,7 +17,18 @@ function App() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [enriching, setEnriching] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [configWarning, setConfigWarning] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    getConfigStatus()
+      .then((status) => {
+        if (!status.search_configured) {
+          setConfigWarning(status.message);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleUploadComplete = (b: BatchInfo) => {
     setBatch(b);
@@ -90,6 +102,15 @@ function App() {
           )}
         </div>
       </header>
+
+      {/* Config warning */}
+      {configWarning && (
+        <div className="max-w-7xl mx-auto px-6 pt-4">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+            <strong>Configuration Warning:</strong> {configWarning}
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-6 py-8">

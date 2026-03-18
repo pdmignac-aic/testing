@@ -38,6 +38,13 @@ active_tasks: dict[str, asyncio.Task] = {}
 @app.on_event("startup")
 async def startup():
     await init_db()
+    from search import get_search_provider, MockSearchProvider
+    provider = get_search_provider()
+    if isinstance(provider, MockSearchProvider):
+        logger.warning(
+            "⚠ No search API keys configured! Enrichment will return empty results. "
+            "Set GOOGLE_API_KEY + GOOGLE_CSE_ID, SERPAPI_KEY, or BRAVE_API_KEY."
+        )
 
 
 class BatchInfo(BaseModel):
@@ -350,6 +357,23 @@ async def export_csv(batch_id: str):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "search_provider": settings.SEARCH_API_PROVIDER}
+
+
+@app.get("/api/config/status")
+async def config_status():
+    """Check if the backend is properly configured for enrichment."""
+    from search import get_search_provider, MockSearchProvider
+    provider = get_search_provider()
+    is_mock = isinstance(provider, MockSearchProvider)
+    return {
+        "search_configured": not is_mock,
+        "search_provider": type(provider).__name__,
+        "message": (
+            "No search API keys configured. Enrichment requires at least one search provider. "
+            "Set GOOGLE_API_KEY + GOOGLE_CSE_ID, SERPAPI_KEY, or BRAVE_API_KEY in your environment."
+            if is_mock else f"Using {type(provider).__name__}"
+        ),
+    }
 
 
 if __name__ == "__main__":

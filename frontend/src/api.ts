@@ -45,3 +45,14 @@ export async function getManufacturers(
 export function getExportUrl(batchId: string): string {
   return `/api/export/${batchId}`;
 }
+
+export interface ConfigStatus {
+  search_configured: boolean;
+  search_provider: string;
+  message: string;
+}
+
+export async function getConfigStatus(): Promise<ConfigStatus> {
+  const { data } = await api.get<ConfigStatus>('/config/status');
+  return data;
+}

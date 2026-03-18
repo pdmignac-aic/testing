@@ -91,10 +91,20 @@ async def enrich_single_manufacturer(
             errors.append(f"Trade Associations: {str(e)}")
 
         # Determine final status
+        # Check if we actually got any meaningful enrichment data
+        enrichment_fields = [
+            "edc_name", "edc_contact_name", "edc_contact_email",
+            "major_customers", "trade_associations",
+        ]
+        has_data = any(results.get(f) for f in enrichment_fields)
+
         if errors and not results:
             status = "failed"
         elif errors:
             status = "partial"
+        elif not has_data:
+            status = "partial"
+            errors.append("No enrichment data found (search API may not be configured)")
         else:
             status = "complete"
 

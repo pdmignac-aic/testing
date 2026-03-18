@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -31,14 +31,15 @@ const columnHelper = createColumnHelper<Manufacturer>();
 export default function ResultsTable({ batchId, refreshTrigger }: Props) {
   const [data, setData] = useState<Manufacturer[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(1);
   const pageSize = 50;
+  const hasFetchedRef = useRef(false);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const sortCol = sorting[0]?.id;
       const sortDir = sorting[0]?.desc ? 'desc' : 'asc';
@@ -51,6 +52,7 @@ export default function ResultsTable({ batchId, refreshTrigger }: Props) {
       });
       setData(result.data);
       setTotal(result.total);
+      hasFetchedRef.current = true;
     } catch (err) {
       console.error('Failed to fetch manufacturers:', err);
     } finally {
@@ -58,9 +60,17 @@ export default function ResultsTable({ batchId, refreshTrigger }: Props) {
     }
   }, [batchId, search, sorting, page]);
 
+  // Initial load and when search/sort/page changes — show loading
   useEffect(() => {
-    fetchData();
-  }, [fetchData, refreshTrigger]);
+    fetchData(true);
+  }, [fetchData]);
+
+  // Poll refreshes — update data silently without loading state
+  useEffect(() => {
+    if (hasFetchedRef.current) {
+      fetchData(false);
+    }
+  }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns = useMemo(
     () => [
