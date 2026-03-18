@@ -175,10 +175,8 @@ async def start_enrichment(request: EnrichRequest):
         try:
             # Update processing count as we go
             prog = enrichment_progress[batch_id]
-            prog["processing"] = min(
-                settings.MAX_CONCURRENT if request.max_concurrent is None else request.max_concurrent,
-                prog["total"],
-            )
+            concurrent = request.max_concurrent if request.max_concurrent is not None else settings.MAX_CONCURRENT
+            prog["processing"] = min(concurrent, prog["total"])
             prog["pending"] = prog["total"] - prog["processing"]
 
             await enrich_batch(
@@ -187,12 +185,29 @@ async def start_enrichment(request: EnrichRequest):
                 max_concurrent=request.max_concurrent,
             )
         except Exception as e:
-            logger.error(f"Batch enrichment error: {e}")
+            logger.error(f"Batch enrichment error: {e}", exc_info=True)
         finally:
             prog = enrichment_progress.get(batch_id)
             if prog:
                 prog["status"] = "complete"
                 prog["processing"] = 0
+                # Reconcile counts from DB in case callbacks were missed
+                try:
+                    db = await get_db()
+                    try:
+                        rows = await get_manufacturers_by_batch(db, batch_id)
+                        counts = {"complete": 0, "failed": 0, "partial": 0, "pending": 0, "processing": 0}
+                        for row in rows:
+                            s = dict(row).get("status", "pending")
+                            counts[s] = counts.get(s, 0) + 1
+                        prog["completed"] = counts["complete"]
+                        prog["failed"] = counts["failed"]
+                        prog["partial"] = counts["partial"]
+                        prog["pending"] = counts["pending"]
+                    finally:
+                        await db.close()
+                except Exception as e:
+                    logger.error(f"Failed to reconcile progress from DB: {e}")
 
     task = asyncio.create_task(run_enrichment())
     active_tasks[batch_id] = task
@@ -351,6 +366,44 @@ async def export_csv(batch_id: str):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=enriched_{batch_id}.csv"},
     )
+
+
+@app.delete("/api/cache/{batch_id}")
+async def clear_cache(batch_id: str):
+    """Clear cached enrichment data for a batch so it can be re-enriched with fresh results."""
+    db = await get_db()
+    try:
+        # Get all manufacturers in the batch
+        rows = await get_manufacturers_by_batch(db, batch_id)
+        if not rows:
+            raise HTTPException(status_code=404, detail="Batch not found")
+
+        # Delete cache entries and reset manufacturer enrichment fields
+        from enrichment.pipeline import make_cache_key
+        deleted = 0
+        for row in rows:
+            r = dict(row)
+            cache_key = make_cache_key(r["company_name"], r.get("address") or "")
+            for track in ["edc", "customers", "trade_assoc"]:
+                result = await db.execute("DELETE FROM cache WHERE cache_key = ? AND track = ?", (cache_key, track))
+                deleted += result.rowcount
+
+            # Reset enrichment fields
+            await update_manufacturer(db, r["id"], {
+                "status": "pending",
+                "edc_name": None, "edc_contact_name": None, "edc_contact_email": None,
+                "edc_contact_phone": None, "edc_website": None, "edc_source": None,
+                "major_customers": None, "customer_source": None,
+                "trade_associations": None, "error_log": None,
+            })
+        await db.commit()
+    finally:
+        await db.close()
+
+    # Clear in-memory progress
+    enrichment_progress.pop(batch_id, None)
+
+    return {"message": f"Cleared {deleted} cache entries for batch {batch_id}", "batch_id": batch_id}
 
 
 @app.get("/api/health")

@@ -125,16 +125,17 @@ class BraveSearchProvider(SearchProvider):
 class DuckDuckGoSearchProvider(SearchProvider):
     """DuckDuckGo search provider — free, no API key required.
 
-    Includes retry with short backoff to handle rate limiting.
+    Includes retry with exponential backoff to handle rate limiting.
     Uses asyncio.to_thread to avoid blocking the event loop.
+    Falls back to HTML scraping of DuckDuckGo lite if the API is rate-limited.
     """
 
-    MAX_RETRIES = 2
+    MAX_RETRIES = 3
 
     def _search_sync(self, query: str, num_results: int) -> list[dict]:
         """Run DDG search synchronously (called via to_thread)."""
         from ddgs import DDGS
-        ddgs = DDGS(timeout=10)
+        ddgs = DDGS(timeout=15)
         raw_results = ddgs.text(query, max_results=num_results)
         results = []
         for item in raw_results:
@@ -147,16 +148,64 @@ class DuckDuckGoSearchProvider(SearchProvider):
             )
         return results
 
+    async def _search_html_fallback(self, query: str, num_results: int) -> list[dict]:
+        """Fallback: scrape DuckDuckGo HTML directly when the API is rate-limited."""
+        import re
+        from urllib.parse import quote_plus
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code != 200:
+                    logger.warning(f"DDG HTML fallback got status {resp.status_code}")
+                    return []
+
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(resp.text, "lxml")
+            results = []
+            for result_div in soup.select(".result"):
+                title_tag = result_div.select_one(".result__title a, .result__a")
+                snippet_tag = result_div.select_one(".result__snippet")
+                if not title_tag:
+                    continue
+                href = title_tag.get("href", "")
+                # DDG HTML wraps URLs in a redirect — extract the actual URL
+                if "uddg=" in href:
+                    from urllib.parse import unquote, parse_qs, urlparse
+                    parsed = urlparse(href)
+                    qs = parse_qs(parsed.query)
+                    href = unquote(qs.get("uddg", [href])[0])
+                results.append({
+                    "title": title_tag.get_text(strip=True),
+                    "url": href,
+                    "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
+                })
+                if len(results) >= num_results:
+                    break
+            return results
+        except Exception as e:
+            logger.error(f"DDG HTML fallback failed: {e}")
+            return []
+
     async def search(self, query: str, num_results: int = 5) -> list[dict]:
         for attempt in range(self.MAX_RETRIES):
             try:
                 return await asyncio.to_thread(self._search_sync, query, num_results)
             except Exception as e:
+                err_str = str(e).lower()
+                is_ratelimit = "ratelimit" in err_str or "403" in err_str
+                wait = 3 * (attempt + 1)  # 3, 6, 9 seconds
                 if attempt < self.MAX_RETRIES - 1:
-                    wait = 3  # Short fixed delay
                     logger.warning(f"DuckDuckGo search failed (attempt {attempt + 1}): {e} — retrying in {wait}s")
                     await asyncio.sleep(wait)
                     continue
+                # Final attempt failed — try HTML fallback for rate limits
+                if is_ratelimit:
+                    logger.info("DDG API rate-limited, trying HTML fallback...")
+                    return await self._search_html_fallback(query, num_results)
                 logger.error(f"DuckDuckGo search error after {self.MAX_RETRIES} attempts: {e}")
                 return []
         return []

@@ -118,12 +118,31 @@ KNOWN_COMPANIES = [
 
 
 def _extract_known_companies(text: str) -> list[str]:
-    """Find known company names in text."""
+    """Find known company names in text using word boundary matching."""
+    import re
     found = []
     text_lower = text.lower()
     for company in KNOWN_COMPANIES:
-        if company.lower() in text_lower:
-            found.append(company)
+        company_lower = company.lower()
+        # Short names (<=3 chars like "GE", "3M", "GM") need word boundaries
+        # to avoid false positives in random text
+        if len(company) <= 3:
+            pattern = r'\b' + re.escape(company_lower) + r'\b'
+            if re.search(pattern, text_lower):
+                # Extra check: require it appears near business context
+                for match in re.finditer(pattern, text_lower):
+                    start = max(0, match.start() - 100)
+                    end = min(len(text_lower), match.end() + 100)
+                    context = text_lower[start:end]
+                    business_terms = ["customer", "client", "partner", "supplier", "contract",
+                                      "supplies", "aviation", "aerospace", "defense", "industrial",
+                                      "manufacturer", "company", "corporation", "inc"]
+                    if any(term in context for term in business_terms):
+                        found.append(company)
+                        break
+        else:
+            if company_lower in text_lower:
+                found.append(company)
     return found
 
 
