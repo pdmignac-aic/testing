@@ -125,16 +125,16 @@ class BraveSearchProvider(SearchProvider):
 class DuckDuckGoSearchProvider(SearchProvider):
     """DuckDuckGo search provider — free, no API key required.
 
-    Includes retry with exponential backoff to handle rate limiting.
+    Includes retry with short backoff to handle rate limiting.
     Uses asyncio.to_thread to avoid blocking the event loop.
     """
 
-    MAX_RETRIES = 3
+    MAX_RETRIES = 2
 
     def _search_sync(self, query: str, num_results: int) -> list[dict]:
         """Run DDG search synchronously (called via to_thread)."""
         from ddgs import DDGS
-        ddgs = DDGS()
+        ddgs = DDGS(timeout=10)
         raw_results = ddgs.text(query, max_results=num_results)
         results = []
         for item in raw_results:
@@ -153,7 +153,7 @@ class DuckDuckGoSearchProvider(SearchProvider):
                 return await asyncio.to_thread(self._search_sync, query, num_results)
             except Exception as e:
                 if attempt < self.MAX_RETRIES - 1:
-                    wait = (attempt + 1) * 8  # 8s, 16s, 24s
+                    wait = 3  # Short fixed delay
                     logger.warning(f"DuckDuckGo search failed (attempt {attempt + 1}): {e} — retrying in {wait}s")
                     await asyncio.sleep(wait)
                     continue

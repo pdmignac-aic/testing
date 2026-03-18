@@ -10,8 +10,8 @@ class Settings:
     BRAVE_API_KEY: str = os.getenv("BRAVE_API_KEY", "")
 
     # Rate limiting
-    REQUEST_DELAY_MIN: float = float(os.getenv("REQUEST_DELAY_MIN", "3.0"))
-    REQUEST_DELAY_MAX: float = float(os.getenv("REQUEST_DELAY_MAX", "5.0"))
+    REQUEST_DELAY_MIN: float = float(os.getenv("REQUEST_DELAY_MIN", "1.0"))
+    REQUEST_DELAY_MAX: float = float(os.getenv("REQUEST_DELAY_MAX", "2.0"))
     MAX_CONCURRENT: int = int(os.getenv("MAX_CONCURRENT", "1"))
 
     # Database

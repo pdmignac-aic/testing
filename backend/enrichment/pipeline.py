@@ -64,8 +64,8 @@ async def enrich_single_manufacturer(
             logger.error(f"EDC lookup failed for {company_name}: {e}")
             errors.append(f"EDC: {str(e)}")
 
-        # Delay between tracks to avoid search rate limiting
-        await asyncio.sleep(5)
+        # Brief delay between tracks to avoid search rate limiting
+        await asyncio.sleep(2)
 
         # Track B: Major Customers
         try:
@@ -80,8 +80,8 @@ async def enrich_single_manufacturer(
             logger.error(f"Customer lookup failed for {company_name}: {e}")
             errors.append(f"Customers: {str(e)}")
 
-        # Delay between tracks to avoid search rate limiting
-        await asyncio.sleep(5)
+        # Brief delay between tracks to avoid search rate limiting
+        await asyncio.sleep(2)
 
         # Track C: Trade Associations
         try:

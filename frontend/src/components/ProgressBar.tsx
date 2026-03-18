@@ -54,6 +54,11 @@ export default function ProgressBar({ progress }: Props) {
           <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" /> Pending: {pending}
         </span>
       </div>
+      {status === 'running' && processing > 0 && (
+        <p className="mt-2 text-sm text-gray-500 italic">
+          Each company takes 15–30s to enrich (web search + scraping). Please wait...
+        </p>
+      )}
       {status === 'complete' && (
         <p className="mt-2 text-sm font-medium text-green-600">Enrichment complete!</p>
       )}
