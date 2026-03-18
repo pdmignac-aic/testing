@@ -113,7 +113,7 @@ KNOWN_COMPANIES = [
     "Thor Industries", "Forest River", "Patrick Industries", "Cummins",
     "Rolls-Royce", "Pratt & Whitney", "Collins Aerospace",
     "U.S. Army", "U.S. Navy", "U.S. Air Force", "Department of Defense",
-    "Apple", "Google", "Microsoft", "Amazon", "Meta",
+    "Apple", "Google", "Microsoft", "Amazon", "Meta Platforms",
 ]
 
 
@@ -124,9 +124,10 @@ def _extract_known_companies(text: str) -> list[str]:
     text_lower = text.lower()
     for company in KNOWN_COMPANIES:
         company_lower = company.lower()
-        # Short names (<=3 chars like "GE", "3M", "GM") need word boundaries
+        # Short or common names need word boundaries + business context
         # to avoid false positives in random text
-        if len(company) <= 3:
+        ambiguous_names = {"ge", "gm", "3m", "abb", "ford", "meta platforms"}
+        if len(company) <= 3 or company_lower in ambiguous_names:
             pattern = r'\b' + re.escape(company_lower) + r'\b'
             if re.search(pattern, text_lower):
                 # Extra check: require it appears near business context

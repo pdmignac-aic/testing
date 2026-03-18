@@ -3,6 +3,7 @@
 import httpx
 import asyncio
 import random
+import time
 import logging
 from config import settings
 
@@ -125,17 +126,27 @@ class BraveSearchProvider(SearchProvider):
 class DuckDuckGoSearchProvider(SearchProvider):
     """DuckDuckGo search provider — free, no API key required.
 
-    Includes retry with exponential backoff to handle rate limiting.
-    Uses asyncio.to_thread to avoid blocking the event loop.
-    Falls back to HTML scraping of DuckDuckGo lite if the API is rate-limited.
+    Uses a global rate limiter to avoid 403 Ratelimit errors.
+    Falls back to HTML scraping when the API is blocked.
     """
 
     MAX_RETRIES = 3
+    # Global cooldown tracking shared across all instances
+    _last_success: float = 0
+    _consecutive_failures: int = 0
+    _cooldown_until: float = 0
+    _lock = None  # initialized lazily
+
+    @classmethod
+    def _get_lock(cls):
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        return cls._lock
 
     def _search_sync(self, query: str, num_results: int) -> list[dict]:
         """Run DDG search synchronously (called via to_thread)."""
         from ddgs import DDGS
-        ddgs = DDGS(timeout=15)
+        ddgs = DDGS(timeout=20)
         raw_results = ddgs.text(query, max_results=num_results)
         results = []
         for item in raw_results:
@@ -150,17 +161,15 @@ class DuckDuckGoSearchProvider(SearchProvider):
 
     async def _search_html_fallback(self, query: str, num_results: int) -> list[dict]:
         """Fallback: scrape DuckDuckGo HTML directly when the API is rate-limited."""
-        import re
         from urllib.parse import quote_plus
         url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code != 200:
-                    logger.warning(f"DDG HTML fallback got status {resp.status_code}")
                     return []
 
             from bs4 import BeautifulSoup
@@ -172,7 +181,6 @@ class DuckDuckGoSearchProvider(SearchProvider):
                 if not title_tag:
                     continue
                 href = title_tag.get("href", "")
-                # DDG HTML wraps URLs in a redirect — extract the actual URL
                 if "uddg=" in href:
                     from urllib.parse import unquote, parse_qs, urlparse
                     parsed = urlparse(href)
@@ -187,28 +195,52 @@ class DuckDuckGoSearchProvider(SearchProvider):
                     break
             return results
         except Exception as e:
-            logger.error(f"DDG HTML fallback failed: {e}")
+            logger.warning(f"DDG HTML fallback failed: {e}")
             return []
 
     async def search(self, query: str, num_results: int = 5) -> list[dict]:
+        lock = self._get_lock()
+
+        async with lock:
+            # Wait for cooldown if active
+            now = time.monotonic()
+            if now < DuckDuckGoSearchProvider._cooldown_until:
+                wait = DuckDuckGoSearchProvider._cooldown_until - now
+                logger.info(f"DDG rate-limit cooldown: waiting {wait:.0f}s")
+                await asyncio.sleep(wait)
+
         for attempt in range(self.MAX_RETRIES):
             try:
-                return await asyncio.to_thread(self._search_sync, query, num_results)
+                results = await asyncio.to_thread(self._search_sync, query, num_results)
+                # Success — reset failure counter
+                DuckDuckGoSearchProvider._consecutive_failures = 0
+                DuckDuckGoSearchProvider._last_success = time.monotonic()
+                return results
             except Exception as e:
                 err_str = str(e).lower()
                 is_ratelimit = "ratelimit" in err_str or "403" in err_str
-                wait = 3 * (attempt + 1)  # 3, 6, 9 seconds
+
+                if is_ratelimit:
+                    DuckDuckGoSearchProvider._consecutive_failures += 1
+                    # Exponential backoff: 10s, 30s, 60s
+                    cooldown = min(10 * (2 ** DuckDuckGoSearchProvider._consecutive_failures), 60)
+                    DuckDuckGoSearchProvider._cooldown_until = time.monotonic() + cooldown
+                    logger.warning(f"DDG rate-limited (attempt {attempt + 1}), cooling down {cooldown}s")
+                    await asyncio.sleep(cooldown)
+                    continue
+
+                wait = 3 * (attempt + 1)
                 if attempt < self.MAX_RETRIES - 1:
-                    logger.warning(f"DuckDuckGo search failed (attempt {attempt + 1}): {e} — retrying in {wait}s")
+                    logger.warning(f"DDG search failed (attempt {attempt + 1}): {e} — retrying in {wait}s")
                     await asyncio.sleep(wait)
                     continue
-                # Final attempt failed — try HTML fallback for rate limits
-                if is_ratelimit:
-                    logger.info("DDG API rate-limited, trying HTML fallback...")
-                    return await self._search_html_fallback(query, num_results)
-                logger.error(f"DuckDuckGo search error after {self.MAX_RETRIES} attempts: {e}")
+
+                logger.error(f"DDG search error after {self.MAX_RETRIES} attempts: {e}")
                 return []
-        return []
+
+        # All retries exhausted — try HTML fallback as last resort
+        logger.info("DDG API exhausted, trying HTML fallback...")
+        return await self._search_html_fallback(query, num_results)
 
 
 class MockSearchProvider(SearchProvider):
@@ -219,29 +251,40 @@ class MockSearchProvider(SearchProvider):
         return []
 
 
+# Module-level singleton to avoid recreating on every call
+_search_provider: SearchProvider | None = None
+
+
 def get_search_provider() -> SearchProvider:
-    """Factory to get the configured search provider."""
+    """Factory to get the configured search provider (singleton)."""
+    global _search_provider
+    if _search_provider is not None:
+        return _search_provider
+
     provider = settings.SEARCH_API_PROVIDER.lower()
     if provider == "google" and settings.GOOGLE_API_KEY:
-        return GoogleSearchProvider()
+        _search_provider = GoogleSearchProvider()
     elif provider == "serpapi" and settings.SERPAPI_KEY:
-        return SerpAPIProvider()
+        _search_provider = SerpAPIProvider()
     elif provider == "brave" and settings.BRAVE_API_KEY:
-        return BraveSearchProvider()
+        _search_provider = BraveSearchProvider()
     elif provider == "duckduckgo":
-        return DuckDuckGoSearchProvider()
+        _search_provider = DuckDuckGoSearchProvider()
 
-    # Auto-detect based on available keys
-    if settings.GOOGLE_API_KEY and settings.GOOGLE_CSE_ID:
-        return GoogleSearchProvider()
-    if settings.SERPAPI_KEY:
-        return SerpAPIProvider()
-    if settings.BRAVE_API_KEY:
-        return BraveSearchProvider()
+    if _search_provider is None:
+        # Auto-detect based on available keys
+        if settings.GOOGLE_API_KEY and settings.GOOGLE_CSE_ID:
+            _search_provider = GoogleSearchProvider()
+        elif settings.SERPAPI_KEY:
+            _search_provider = SerpAPIProvider()
+        elif settings.BRAVE_API_KEY:
+            _search_provider = BraveSearchProvider()
+        else:
+            # Default to DuckDuckGo — free, no API key needed
+            logger.info("No search API keys configured — using DuckDuckGo (free, no key required)")
+            _search_provider = DuckDuckGoSearchProvider()
 
-    # Default to DuckDuckGo — free, no API key needed
-    logger.info("No search API keys configured — using DuckDuckGo (free, no key required)")
-    return DuckDuckGoSearchProvider()
+    return _search_provider
 
 
 async def rate_limited_delay():

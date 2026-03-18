@@ -107,15 +107,32 @@ def extract_contact_name(text: str, title_keywords: list[str] | None = None) -> 
                             # Reject dates, numbers, nav elements, and non-name patterns
                             if re.search(r'\d{4}|\d{1,2},\s*\d{4}|january|february|march|april|may|june|july|august|september|october|november|december', clean, re.IGNORECASE):
                                 continue
-                            # Reject common website UI text
-                            junk_phrases = ["read more", "learn more", "click here", "member login",
-                                            "sign in", "sign up", "subscribe", "contact us",
-                                            "view all", "see more", "download", "back to"]
-                            if clean.lower().strip() in junk_phrases:
+                            # Reject common website UI text and non-name patterns
+                            clean_lower = clean.lower().strip()
+                            junk_phrases = [
+                                "read more", "learn more", "click here", "member login",
+                                "sign in", "sign up", "subscribe", "contact us",
+                                "view all", "see more", "download", "back to",
+                                "find members", "premier partners", "our team",
+                                "get started", "join us", "apply now", "see all",
+                            ]
+                            if clean_lower in junk_phrases:
                                 continue
-                            # Must look like a person name (at least 2 alpha words, no special chars)
+                            # Reject if it contains known non-name words
+                            non_name_words = {
+                                "the", "company", "corporation", "inc", "llc", "ltd",
+                                "partners", "members", "association", "group", "team",
+                                "our", "your", "about", "home", "welcome", "find",
+                                "view", "all", "new", "more", "premier", "featured",
+                                "boeing", "lockheed", "raytheon", "northrop",
+                                "bank", "insurance", "services", "industries", "solutions",
+                                "foundation", "institute", "university", "college",
+                                "county", "city", "state", "national", "international",
+                            }
                             name_words = [w for w in clean.split() if w[0].isalpha()]
                             if len(name_words) < 2 or len(name_words) > 4:
+                                continue
+                            if any(w.lower() in non_name_words for w in name_words):
                                 continue
                             return clean
                 # If name is in same line as title

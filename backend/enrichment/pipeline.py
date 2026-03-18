@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import json
 import logging
 from typing import Callable
 
@@ -11,13 +10,11 @@ from enrichment.address_parser import parse_address
 from enrichment.edc_lookup import lookup_edc
 from enrichment.customer_lookup import lookup_customers
 from enrichment.trade_association_lookup import lookup_trade_associations
-from config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def make_cache_key(company_name: str, address: str) -> str:
-    """Create content-addressable cache key."""
     raw = f"{company_name.strip().lower()}|{address.strip().lower()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
@@ -33,7 +30,6 @@ async def enrich_single_manufacturer(
     db = await get_db()
     status = "failed"
     try:
-        # Update status to processing
         await update_manufacturer(db, manufacturer_id, {"status": "processing"})
 
         # Parse address
@@ -43,7 +39,6 @@ async def enrich_single_manufacturer(
         county = addr.get("county", "")
         zip_code = addr["zip_code"]
 
-        # Update parsed address fields
         await update_manufacturer(db, manufacturer_id, {
             "city": city, "state": state, "county": county, "zip_code": zip_code
         })
@@ -52,7 +47,7 @@ async def enrich_single_manufacturer(
         errors = []
         results = {}
 
-        # Track A: EDC Lookup
+        # Track A: EDC Lookup (1 search + 1-2 scrapes)
         try:
             cached = await get_cache(db, cache_key, "edc")
             if cached:
@@ -63,12 +58,9 @@ async def enrich_single_manufacturer(
             results.update(edc_data)
         except Exception as e:
             logger.error(f"EDC lookup failed for {company_name}: {e}", exc_info=True)
-            errors.append(f"EDC: {str(e)}")
+            errors.append(f"EDC: {str(e)[:200]}")
 
-        # Brief delay between tracks to avoid search rate limiting
-        await asyncio.sleep(2)
-
-        # Track B: Major Customers
+        # Track B: Major Customers (1 search + 1-3 scrapes)
         try:
             cached = await get_cache(db, cache_key, "customers")
             if cached:
@@ -79,12 +71,9 @@ async def enrich_single_manufacturer(
             results.update(customer_data)
         except Exception as e:
             logger.error(f"Customer lookup failed for {company_name}: {e}", exc_info=True)
-            errors.append(f"Customers: {str(e)}")
+            errors.append(f"Customers: {str(e)[:200]}")
 
-        # Brief delay between tracks to avoid search rate limiting
-        await asyncio.sleep(2)
-
-        # Track C: Trade Associations
+        # Track C: Trade Associations (1 search + 1-3 scrapes)
         try:
             cached = await get_cache(db, cache_key, "trade_assoc")
             if cached:
@@ -95,7 +84,7 @@ async def enrich_single_manufacturer(
             results.update(trade_data)
         except Exception as e:
             logger.error(f"Trade association lookup failed for {company_name}: {e}", exc_info=True)
-            errors.append(f"Trade Associations: {str(e)}")
+            errors.append(f"Trade Associations: {str(e)[:200]}")
 
         # Determine final status
         enrichment_fields = [
@@ -104,13 +93,12 @@ async def enrich_single_manufacturer(
         ]
         has_data = any(results.get(f) for f in enrichment_fields)
 
-        if errors and not results:
+        if errors and not has_data:
             status = "failed"
         elif errors:
             status = "partial"
         elif not has_data:
             status = "partial"
-            errors.append("No enrichment data found (search API may not be configured)")
         else:
             status = "complete"
 
@@ -119,6 +107,7 @@ async def enrich_single_manufacturer(
             results["error_log"] = "; ".join(errors)
 
         await update_manufacturer(db, manufacturer_id, results)
+        logger.info(f"Enriched {company_name}: status={status}")
         return results
 
     except Exception as e:
@@ -126,14 +115,13 @@ async def enrich_single_manufacturer(
         status = "failed"
         try:
             await update_manufacturer(db, manufacturer_id, {
-                "status": "failed",
-                "error_log": str(e),
+                "status": "failed", "error_log": str(e)[:500],
             })
         except Exception:
-            logger.error(f"Failed to update manufacturer {manufacturer_id} status after error")
+            logger.error(f"Failed to update manufacturer {manufacturer_id} status")
         return {"status": "failed", "error_log": str(e)}
     finally:
-        # Always call progress callback so frontend doesn't get stuck
+        # Always call progress callback so frontend never gets stuck
         if progress_callback:
             try:
                 await progress_callback(manufacturer_id, status)
@@ -150,36 +138,67 @@ async def enrich_batch(
     progress_callback: Callable | None = None,
     max_concurrent: int | None = None,
 ):
-    """Enrich a batch of manufacturers with concurrency control."""
-    semaphore = asyncio.Semaphore(max_concurrent or settings.MAX_CONCURRENT)
+    """Enrich a batch of manufacturers.
 
-    async def _enrich_with_semaphore(mfr):
-        try:
-            async with asyncio.timeout(300):  # 5 minute timeout per manufacturer
-                async with semaphore:
-                    return await enrich_single_manufacturer(
+    Processes sequentially by default (max_concurrent=1) to avoid
+    overwhelming the free DuckDuckGo search API with concurrent requests.
+    """
+    concurrency = max_concurrent or 1
+
+    if concurrency <= 1:
+        # Sequential processing — most reliable with DDG
+        for mfr in manufacturers:
+            try:
+                await asyncio.wait_for(
+                    enrich_single_manufacturer(
                         manufacturer_id=mfr["id"],
                         company_name=mfr["company_name"],
                         address=mfr.get("address") or "",
                         website=mfr.get("website") or "",
                         progress_callback=progress_callback,
+                    ),
+                    timeout=300,  # 5 min per manufacturer
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Enrichment timed out for {mfr['company_name']}")
+                if progress_callback:
+                    try:
+                        await progress_callback(mfr["id"], "failed")
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Unexpected error enriching {mfr['company_name']}: {e}")
+                if progress_callback:
+                    try:
+                        await progress_callback(mfr["id"], "failed")
+                    except Exception:
+                        pass
+    else:
+        # Concurrent processing with semaphore
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _enrich_with_semaphore(mfr):
+            try:
+                async with semaphore:
+                    return await asyncio.wait_for(
+                        enrich_single_manufacturer(
+                            manufacturer_id=mfr["id"],
+                            company_name=mfr["company_name"],
+                            address=mfr.get("address") or "",
+                            website=mfr.get("website") or "",
+                            progress_callback=progress_callback,
+                        ),
+                        timeout=300,
                     )
-        except asyncio.TimeoutError:
-            logger.error(f"Enrichment timed out for {mfr['company_name']}")
-            # Still call progress callback on timeout
-            if progress_callback:
-                try:
-                    await progress_callback(mfr["id"], "failed")
-                except Exception:
-                    pass
-            return {"status": "failed", "error_log": "Enrichment timed out"}
+            except asyncio.TimeoutError:
+                logger.error(f"Enrichment timed out for {mfr['company_name']}")
+                if progress_callback:
+                    try:
+                        await progress_callback(mfr["id"], "failed")
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Unexpected error enriching {mfr['company_name']}: {e}")
 
-    tasks = [_enrich_with_semaphore(mfr) for mfr in manufacturers]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Log any unexpected exceptions from gather
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            logger.error(f"Unexpected error enriching {manufacturers[i]['company_name']}: {result}")
-
-    return results
+        tasks = [_enrich_with_semaphore(mfr) for mfr in manufacturers]
+        await asyncio.gather(*tasks, return_exceptions=True)

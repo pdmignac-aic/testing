@@ -160,24 +160,29 @@ async def start_enrichment(request: EnrichRequest):
 
     async def progress_callback(mfr_id: int, status: str):
         prog = enrichment_progress.get(batch_id)
-        if prog:
-            prog["processing"] = max(0, prog["processing"] - 1)
-            if status == "complete":
-                prog["completed"] += 1
-            elif status == "failed":
-                prog["failed"] += 1
-            elif status == "partial":
-                prog["partial"] += 1
-            prog["pending"] = max(0, prog["pending"] - 1)
+        if not prog:
+            return
+        # One finished processing
+        prog["processing"] = max(0, prog["processing"] - 1)
+        if status == "complete":
+            prog["completed"] += 1
+        elif status == "failed":
+            prog["failed"] += 1
+        elif status == "partial":
+            prog["partial"] += 1
+        # Next one will start processing (if any remain)
+        remaining = prog["total"] - prog["completed"] - prog["failed"] - prog["partial"] - prog["processing"]
+        if remaining > 0:
+            prog["processing"] += 1
+        prog["pending"] = max(0, remaining - prog["processing"])
 
     async def run_enrichment():
         from enrichment.pipeline import enrich_batch
         try:
-            # Update processing count as we go
             prog = enrichment_progress[batch_id]
-            concurrent = request.max_concurrent if request.max_concurrent is not None else settings.MAX_CONCURRENT
-            prog["processing"] = min(concurrent, prog["total"])
-            prog["pending"] = prog["total"] - prog["processing"]
+            # Sequential processing: 1 at a time
+            prog["processing"] = 1
+            prog["pending"] = prog["total"] - 1
 
             await enrich_batch(
                 manufacturers,
@@ -191,7 +196,7 @@ async def start_enrichment(request: EnrichRequest):
             if prog:
                 prog["status"] = "complete"
                 prog["processing"] = 0
-                # Reconcile counts from DB in case callbacks were missed
+                # Reconcile from DB
                 try:
                     db = await get_db()
                     try:
@@ -207,7 +212,7 @@ async def start_enrichment(request: EnrichRequest):
                     finally:
                         await db.close()
                 except Exception as e:
-                    logger.error(f"Failed to reconcile progress from DB: {e}")
+                    logger.error(f"Failed to reconcile progress: {e}")
 
     task = asyncio.create_task(run_enrichment())
     active_tasks[batch_id] = task
@@ -408,7 +413,9 @@ async def clear_cache(batch_id: str):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "search_provider": settings.SEARCH_API_PROVIDER}
+    from search import get_search_provider
+    provider = get_search_provider()
+    return {"status": "ok", "search_provider": type(provider).__name__}
 
 
 @app.get("/api/config/status")
