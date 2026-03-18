@@ -87,15 +87,13 @@ async def lookup_trade_associations(
 
     # Step 2: Search for manufacturer in trade association directories
     search = get_search_provider()
-    search_queries = [
-        f'"{company_name}" member OR directory site:ntma.org OR site:pma.org OR site:amtonline.org OR site:sme.org',
-        f'"{company_name}" trade association OR member OR exhibitor',
-    ]
-
-    for query in search_queries:
-        await rate_limited_delay()
-        results = await search.search(query, num_results=5)
-        for sr in results:
+    await rate_limited_delay()
+    search_results = await search.search(
+        f'"{company_name}" trade association OR member OR directory',
+        num_results=5,
+    )
+    if search_results:
+        for sr in search_results:
             title = sr.get("title", "").lower()
             snippet = sr.get("snippet", "").lower()
             url = sr.get("url", "").lower()

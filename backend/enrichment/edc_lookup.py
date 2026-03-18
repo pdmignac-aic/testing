@@ -28,12 +28,9 @@ async def lookup_edc(city: str, state: str, county: str = "") -> dict:
     search = get_search_provider()
     location = county if county else city
 
-    # Try multiple search queries
+    # Try search queries (limited to reduce rate limiting with free search providers)
     queries = [
-        f'"{location}" "{state}" economic development council',
-        f'"{location}" "{state}" economic development corporation',
-        f'"{city}" "{state}" economic development authority',
-        f'"{city}" "{state}" chamber of commerce economic development',
+        f'"{location}" "{state}" economic development council OR corporation OR authority',
     ]
 
     best_result = None
@@ -121,16 +118,5 @@ async def lookup_edc(city: str, state: str, county: str = "") -> dict:
                     break  # Only try one sub-page
 
         result["edc_source"] = "search + website scrape"
-
-    # Also check for NIST MEP center as secondary resource
-    await rate_limited_delay()
-    mep_results = await search.search(f'"{state}" NIST MEP manufacturing extension partnership', num_results=2)
-    if mep_results:
-        mep_info = mep_results[0]
-        if "mep" in mep_info.get("title", "").lower() or "manufacturing extension" in mep_info.get("snippet", "").lower():
-            if not result["edc_name"]:
-                result["edc_name"] = mep_info["title"]
-                result["edc_website"] = mep_info["url"]
-                result["edc_source"] = "NIST MEP search"
 
     return result

@@ -53,42 +53,29 @@ async def lookup_customers(company_name: str, website: str) -> dict:
                             _extract_customer_names_from_text(sub_data["text"], "company website")
                         )
 
-    # Track 2: Search for press releases and news
+    # Track 2: Search for press releases, news, and government contracts
     search = get_search_provider()
-    search_queries = [
-        f'"{company_name}" supplier',
-        f'"{company_name}" customer OR "supplies parts to" OR "contract with"',
-    ]
-
-    for query in search_queries:
-        await rate_limited_delay()
-        results = await search.search(query, num_results=5)
-        for sr in results:
-            snippet = sr.get("snippet", "")
-            title = sr.get("title", "")
-            combined = f"{title} {snippet}"
-            names = _extract_known_companies(combined)
-            for name in names:
-                customers.append((name, "press release"))
-
-    # Track 3: Check for government contracts (defense/aerospace)
     await rate_limited_delay()
-    gov_results = await search.search(
-        f'"{company_name}" site:usaspending.gov OR site:sam.gov OR "federal contract"',
-        num_results=3,
+    search_results = await search.search(
+        f'"{company_name}" supplier OR customer OR contract OR "supplies parts to"',
+        num_results=5,
     )
-    for sr in gov_results:
-        snippet = sr.get("snippet", "").lower()
-        title = sr.get("title", "").lower()
+    for sr in search_results:
+        snippet = sr.get("snippet", "")
+        title = sr.get("title", "")
         combined = f"{title} {snippet}"
-        # Check for agency names
+        names = _extract_known_companies(combined)
+        for name in names:
+            customers.append((name, "search"))
+        # Check for government agencies
         gov_agencies = _extract_gov_agencies(combined)
         for agency in gov_agencies:
-            customers.append((agency, "USASpending"))
-        # Check for prime contractors mentioned
+            customers.append((agency, "search"))
+        # Check for prime contractors
+        combined_lower = combined.lower()
         for prime in DEFENSE_PRIMES:
-            if prime in combined:
-                customers.append((prime.title(), "USASpending"))
+            if prime in combined_lower:
+                customers.append((prime.title(), "search"))
 
     # Deduplicate and format
     seen = set()

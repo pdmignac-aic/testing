@@ -123,26 +123,43 @@ class BraveSearchProvider(SearchProvider):
 
 
 class DuckDuckGoSearchProvider(SearchProvider):
-    """DuckDuckGo search provider — free, no API key required."""
+    """DuckDuckGo search provider — free, no API key required.
+
+    Includes retry with exponential backoff to handle rate limiting.
+    Uses asyncio.to_thread to avoid blocking the event loop.
+    """
+
+    MAX_RETRIES = 3
+
+    def _search_sync(self, query: str, num_results: int) -> list[dict]:
+        """Run DDG search synchronously (called via to_thread)."""
+        from ddgs import DDGS
+        ddgs = DDGS()
+        raw_results = ddgs.text(query, max_results=num_results)
+        results = []
+        for item in raw_results:
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("href", ""),
+                    "snippet": item.get("body", ""),
+                }
+            )
+        return results
 
     async def search(self, query: str, num_results: int = 5) -> list[dict]:
-        try:
-            from ddgs import DDGS
-            ddgs = DDGS()
-            raw_results = ddgs.text(query, max_results=num_results)
-            results = []
-            for item in raw_results:
-                results.append(
-                    {
-                        "title": item.get("title", ""),
-                        "url": item.get("href", ""),
-                        "snippet": item.get("body", ""),
-                    }
-                )
-            return results
-        except Exception as e:
-            logger.error(f"DuckDuckGo search error: {e}")
-            return []
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                return await asyncio.to_thread(self._search_sync, query, num_results)
+            except Exception as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    wait = (attempt + 1) * 8  # 8s, 16s, 24s
+                    logger.warning(f"DuckDuckGo search failed (attempt {attempt + 1}): {e} — retrying in {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+                logger.error(f"DuckDuckGo search error after {self.MAX_RETRIES} attempts: {e}")
+                return []
+        return []
 
 
 class MockSearchProvider(SearchProvider):

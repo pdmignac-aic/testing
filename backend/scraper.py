@@ -28,7 +28,7 @@ async def fetch_page(url: str, timeout: float = 15.0, retries: int = 2) -> str |
                 if resp.status_code == 200:
                     return resp.text
                 logger.warning(f"HTTP {resp.status_code} for {url}")
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as e:
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError, httpx.ProxyError, httpx.HTTPStatusError) as e:
             logger.warning(f"Fetch attempt {attempt + 1} failed for {url}: {e}")
         if attempt < retries:
             await asyncio.sleep(2 ** attempt)
