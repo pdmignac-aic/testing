@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
 *.db
+*.db.bak
 node_modules/
 dist/
