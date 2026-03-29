@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}SQL Query{% endblock %}
+{% block content %}
+<h1>SQL Query</h1>
+
+<div class="query-editor">
+    <textarea id="sql-input" placeholder="SELECT * FROM contacts LIMIT 10;">SELECT * FROM contacts LIMIT 10;</textarea>
+    <div class="query-actions">
+        <button class="btn btn-primary" onclick="runQuery()">Run Query</button>
+        <span class="query-status" id="query-status"></span>
+    </div>
+</div>
+
+<p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 14px;">
+    Tables: <strong>contacts</strong>, <strong>companies</strong>, <strong>deals</strong>, <strong>interactions</strong> &mdash; Only SELECT queries allowed.
+</p>
+
+<div class="table-container" id="results-container" style="display:none;">
+    <table id="results-table">
+        <thead id="results-head"></thead>
+        <tbody id="results-body"></tbody>
+    </table>
+</div>
+
+<div class="query-editor" style="margin-top: 20px;">
+    <h3 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">Quick Queries</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM contacts ORDER BY created_at DESC')">All Contacts</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM companies ORDER BY name')">All Companies</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM deals ORDER BY value DESC')">Deals by Value</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT stage, COUNT(*) as count, SUM(value) as total FROM deals GROUP BY stage')">Pipeline Summary</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT c.first_name, c.last_name, c.email, co.name as company FROM contacts c LEFT JOIN companies co ON c.company_id = co.id')">Contacts + Companies</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT d.title, d.value, d.stage, c.first_name || \' \' || c.last_name as contact, co.name as company FROM deals d LEFT JOIN contacts c ON d.contact_id = c.id LEFT JOIN companies co ON d.company_id = co.id ORDER BY d.value DESC')">Full Deal View</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setQuery(sql) {
+    document.getElementById('sql-input').value = sql;
+    runQuery();
+}
+
+async function runQuery() {
+    const sql = document.getElementById('sql-input').value.trim();
+    const status = document.getElementById('query-status');
+    const container = document.getElementById('results-container');
+
+    if (!sql) return;
+    status.textContent = 'Running...';
+
+    try {
+        const res = await fetch('/query/run', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sql})
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            status.textContent = 'Error: ' + data.error;
+            status.style.color = 'var(--danger)';
+            container.style.display = 'none';
+            return;
+        }
+
+        status.textContent = data.count + ' rows returned';
+        status.style.color = 'var(--success)';
+
+        const head = document.getElementById('results-head');
+        const body = document.getElementById('results-body');
+        head.innerHTML = '<tr>' + data.columns.map(c => '<th>' + c + '</th>').join('') + '</tr>';
+        body.innerHTML = data.rows.map(r =>
+            '<tr>' + data.columns.map(c => '<td>' + (r[c] !== null ? r[c] : '-') + '</td>').join('') + '</tr>'
+        ).join('');
+        container.style.display = 'block';
+    } catch (e) {
+        status.textContent = 'Network error';
+        status.style.color = 'var(--danger)';
+    }
+}
+</script>
+{% endblock %}

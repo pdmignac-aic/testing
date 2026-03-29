@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Import Data{% endblock %}
+{% block content %}
+<h1>Import Data</h1>
+
+<p style="color: var(--text-muted); margin-bottom: 20px; font-size: 0.9rem;">
+    Export your Google Sheet as CSV, then upload it here. Column headers should match the field names (e.g. first_name, last_name, email, phone).
+</p>
+
+<div class="import-area" id="drop-area">
+    <p>Drag & drop a CSV file here, or click to browse</p>
+
+    <div class="import-options">
+        <label><input type="radio" name="table" value="contacts" checked> Contacts</label>
+        <label><input type="radio" name="table" value="companies"> Companies</label>
+        <label><input type="radio" name="table" value="deals"> Deals</label>
+    </div>
+
+    <input type="file" id="file-input" accept=".csv" style="display:none">
+    <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Choose CSV File</button>
+
+    <div id="import-result" class="import-result"></div>
+</div>
+
+<div class="chart-card" style="margin-top: 20px;">
+    <h3>Expected CSV Column Names</h3>
+    <table>
+        <thead><tr><th>Table</th><th>Columns</th></tr></thead>
+        <tbody>
+            <tr><td>contacts</td><td>first_name, last_name, email, phone, job_title, status, notes</td></tr>
+            <tr><td>companies</td><td>name, industry, website, phone, address, notes</td></tr>
+            <tr><td>deals</td><td>title, value, currency, stage, expected_close_date, notes</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropArea = document.getElementById('drop-area');
+const fileInput = document.getElementById('file-input');
+const result = document.getElementById('import-result');
+
+['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, ev => { ev.preventDefault(); dropArea.classList.add('dragover'); }));
+['dragleave', 'drop'].forEach(e => dropArea.addEventListener(e, ev => { ev.preventDefault(); dropArea.classList.remove('dragover'); }));
+
+dropArea.addEventListener('drop', e => { if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+    const table = document.querySelector('input[name="table"]:checked').value;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('table', table);
+
+    result.className = 'import-result';
+    result.textContent = 'Importing...';
+    result.style.display = 'block';
+
+    try {
+        const res = await fetch('/import/csv', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.error) {
+            result.className = 'import-result error';
+            result.textContent = 'Error: ' + data.error;
+        } else {
+            result.className = 'import-result success';
+            result.textContent = 'Successfully imported ' + data.imported + ' rows into ' + table + '!';
+        }
+    } catch (e) {
+        result.className = 'import-result error';
+        result.textContent = 'Network error during upload.';
+    }
+}
+</script>
+{% endblock %}
