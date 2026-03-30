@@ -225,10 +225,12 @@ textarea { resize: vertical; min-height: 60px; }
     border-radius: 12px;
     padding: 24px;
     width: 90%;
-    max-width: 550px;
+    max-width: 560px;
     max-height: 85vh;
     overflow-y: auto;
 }
+
+.modal.modal-wide { max-width: 700px; }
 
 .modal h2 {
     margin-bottom: 16px;
@@ -259,14 +261,62 @@ textarea { resize: vertical; min-height: 60px; }
     text-transform: capitalize;
 }
 
-.badge-lead { background: #2d3436; color: var(--text-muted); }
-.badge-qualified { background: #0984e31a; color: var(--info); }
-.badge-proposal { background: #6c5ce71a; color: var(--primary); }
-.badge-negotiation { background: #fdcb6e1a; color: var(--warning); }
-.badge-won { background: #00b8941a; color: var(--success); }
-.badge-lost { background: #e170551a; color: var(--danger); }
-.badge-active { background: #00b8941a; color: var(--success); }
-.badge-inactive { background: #2d3436; color: var(--text-muted); }
+.badge { background: var(--surface-2); color: var(--text-muted); }
+
+/* Filters */
+.filters { margin-bottom: 20px; }
+.filter-form {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.filter-input {
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+    min-width: 220px;
+}
+.filter-input:focus { outline: none; border-color: var(--primary); }
+.filter-select {
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+.filter-select:focus { outline: none; border-color: var(--primary); }
+
+/* Form sections */
+.form-section {
+    font-size: 0.85rem;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 18px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
+
+.actions-cell { white-space: nowrap; }
+.empty-msg { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Bar fill color variants */
+.bar-fill-info { background: var(--info); }
+.bar-fill-success { background: var(--success); }
+.bar-fill-warning { background: var(--warning); }
+.bar-fill-danger { background: var(--danger); }
+
+code {
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+}
 
 /* Query page */
 .query-editor {

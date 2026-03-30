@@ -1,20 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Import Data{% endblock %}
+{% block title %}Import CSV{% endblock %}
 {% block content %}
-<h1>Import Data</h1>
+<h1>Import Data from CSV</h1>
 
 <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 0.9rem;">
-    Export your Google Sheet as CSV, then upload it here. Column headers should match the field names (e.g. first_name, last_name, email, phone).
+    Export your Google Sheet as CSV (<strong>File &rarr; Download &rarr; Comma Separated Values</strong>), then upload it here.
+    Column headers are matched automatically to your CRM fields.
 </p>
 
 <div class="import-area" id="drop-area">
-    <p>Drag & drop a CSV file here, or click to browse</p>
-
-    <div class="import-options">
-        <label><input type="radio" name="table" value="contacts" checked> Contacts</label>
-        <label><input type="radio" name="table" value="companies"> Companies</label>
-        <label><input type="radio" name="table" value="deals"> Deals</label>
-    </div>
+    <p>Drag & drop your CSV file here, or click to browse</p>
 
     <input type="file" id="file-input" accept=".csv" style="display:none">
     <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Choose CSV File</button>
@@ -23,15 +18,23 @@
 </div>
 
 <div class="chart-card" style="margin-top: 20px;">
-    <h3>Expected CSV Column Names</h3>
-    <table>
-        <thead><tr><th>Table</th><th>Columns</th></tr></thead>
-        <tbody>
-            <tr><td>contacts</td><td>first_name, last_name, email, phone, job_title, status, notes</td></tr>
-            <tr><td>companies</td><td>name, industry, website, phone, address, notes</td></tr>
-            <tr><td>deals</td><td>title, value, currency, stage, expected_close_date, notes</td></tr>
-        </tbody>
-    </table>
+    <h3>Accepted Column Headers</h3>
+    <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 10px;">
+        Your CSV headers should match these names (case-insensitive). Unmatched columns are skipped.
+    </p>
+    <div class="table-container" style="border:none;">
+        <table>
+            <thead><tr><th>Google Sheet Header</th><th>Database Column</th></tr></thead>
+            <tbody>
+                {% for col in columns %}
+                <tr>
+                    <td>{{ col[1] }}</td>
+                    <td><code>{{ col[0] }}</code></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}
 
@@ -48,10 +51,8 @@ dropArea.addEventListener('drop', e => { if (e.dataTransfer.files.length) upload
 fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
 
 async function uploadFile(file) {
-    const table = document.querySelector('input[name="table"]:checked').value;
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('table', table);
 
     result.className = 'import-result';
     result.textContent = 'Importing...';
@@ -66,7 +67,7 @@ async function uploadFile(file) {
             result.textContent = 'Error: ' + data.error;
         } else {
             result.className = 'import-result success';
-            result.textContent = 'Successfully imported ' + data.imported + ' rows into ' + table + '!';
+            result.textContent = 'Successfully imported ' + data.imported + ' leads!';
         }
     } catch (e) {
         result.className = 'import-result error';

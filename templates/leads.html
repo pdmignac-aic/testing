@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+<div class="section-header">
+    <h1>Leads <span style="font-size:0.85rem; color:var(--text-muted); font-weight:400;">({{ leads|length }})</span></h1>
+    <button class="btn btn-primary" onclick="openModal('add-modal')">+ Add Lead</button>
+</div>
+
+<!-- Filters -->
+<div class="filters">
+    <form method="GET" action="/leads" class="filter-form">
+        <input name="search" placeholder="Search company, contact, email..." value="{{ search }}" class="filter-input">
+        <select name="status" class="filter-select">
+            <option value="">All Statuses</option>
+            {% for s in statuses %}<option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+        <select name="layer" class="filter-select">
+            <option value="">All Layers</option>
+            {% for l in layers %}<option value="{{ l }}" {% if layer_filter == l %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+        <select name="owner" class="filter-select">
+            <option value="">All Owners</option>
+            {% for o in owners %}<option value="{{ o }}" {% if owner_filter == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <a href="/leads" class="btn btn-sm">Clear</a>
+    </form>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Company</th><th>Identifier</th><th>Status</th><th>Owner</th>
+                <th>Layer</th><th>Component</th><th>City/State</th>
+                <th>Contact</th><th>Email</th><th>Touches</th>
+                <th>Response</th><th>Engaged</th><th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for l in leads %}
+            <tr>
+                <td>{{ l.company_name or '-' }}</td>
+                <td>{{ l.identifier or '-' }}</td>
+                <td><span class="badge">{{ l.status or '-' }}</span></td>
+                <td>{{ l.owner or '-' }}</td>
+                <td>{{ l.layer or '-' }}</td>
+                <td>{{ l.component or '-' }}</td>
+                <td>{{ l.city or '' }}{% if l.city and l.state %}, {% endif %}{{ l.state or '' }}</td>
+                <td>{{ l.contact_name or '-' }}</td>
+                <td>{{ l.email or '-' }}</td>
+                <td>
+                    {% set count = 0 %}
+                    {% if l.touch_1_date %}{% set count = 1 %}{% endif %}
+                    {% if l.touch_2_date %}{% set count = 2 %}{% endif %}
+                    {% if l.touch_3_date %}{% set count = 3 %}{% endif %}
+                    {% if l.touch_4_date %}{% set count = 4 %}{% endif %}
+                    {% if l.touch_5_date %}{% set count = 5 %}{% endif %}
+                    {% if l.touch_6_date %}{% set count = 6 %}{% endif %}
+                    {% if l.touch_7_date %}{% set count = 7 %}{% endif %}
+                    {{ count }}
+                </td>
+                <td>{{ l.response_date or '-' }}</td>
+                <td>{{ l.engaged_date or '-' }}</td>
+                <td class="actions-cell">
+                    <button class="btn btn-sm btn-primary" onclick="editLead({{ l.id }})">Edit</button>
+                    <form method="POST" action="/leads/{{ l.id }}/delete" style="display:inline" onsubmit="return confirm('Delete this lead?')">
+                        <button class="btn btn-sm btn-danger">Del</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        {% if not leads %}
+            <tr><td colspan="13" style="text-align:center; color:var(--text-muted); padding:30px;">No leads yet. Add one or import from CSV.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="add-modal">
+    <div class="modal modal-wide">
+        <h2>Add Lead</h2>
+        <form method="POST" action="/leads/add">
+            <h3 class="form-section">Company Info</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Company Name *</label><input name="company_name" required></div>
+                <div class="form-group"><label>Identifier</label><input name="identifier"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Status</label><input name="status"></div>
+                <div class="form-group"><label>Owner</label><input name="owner"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Layer</label><input name="layer"></div>
+                <div class="form-group"><label>Dirty Grade</label><input name="dirty_grade"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Component</label><input name="component"></div>
+                <div class="form-group"><label>Ownership</label><input name="ownership"></div>
+            </div>
+            <div class="form-group"><label>Full Address</label><input name="full_address"></div>
+            <div class="form-row">
+                <div class="form-group"><label>Street</label><input name="street"></div>
+                <div class="form-group"><label>City</label><input name="city"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>State</label><input name="state"></div>
+                <div class="form-group"><label>Zip</label><input name="zip"></div>
+                <div class="form-group"><label>Country</label><input name="country"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Founding Year</label><input name="founding_year"></div>
+                <div class="form-group"><label>Duplicate?</label><input name="duplicate"></div>
+            </div>
+            <div class="form-group"><label>Notes</label><textarea name="notes"></textarea></div>
+
+            <h3 class="form-section">Contact Info</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Contact Name</label><input name="contact_name"></div>
+                <div class="form-group"><label>Contact Title</label><input name="contact_title"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Email</label><input name="email"></div>
+                <div class="form-group"><label>Phone/LinkedIn</label><input name="phone_linkedin"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Warm Intro?</label><input name="warm_intro"></div>
+                <div class="form-group"><label>Other</label><input name="other"></div>
+            </div>
+            <div class="form-group"><label>Notes 2</label><textarea name="notes2"></textarea></div>
+
+            <h3 class="form-section">Outreach Touches</h3>
+            {% for i in range(1, 8) %}
+            <div class="form-row">
+                <div class="form-group"><label>Touch {{ i }} Date</label><input name="touch_{{ i }}_date" type="text" placeholder="YYYY-MM-DD"></div>
+                <div class="form-group"><label>Touch {{ i }} Channel</label><input name="touch_{{ i }}_channel"></div>
+            </div>
+            {% endfor %}
+            <div class="form-row">
+                <div class="form-group"><label>Response Date</label><input name="response_date" type="text" placeholder="YYYY-MM-DD"></div>
+                <div class="form-group"><label>Engaged Date</label><input name="engaged_date" type="text" placeholder="YYYY-MM-DD"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn" onclick="closeModal('add-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add Lead</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal modal-wide">
+        <h2>Edit Lead</h2>
+        <form method="POST" id="edit-form">
+            <h3 class="form-section">Company Info</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Company Name *</label><input name="company_name" id="e-company_name" required></div>
+                <div class="form-group"><label>Identifier</label><input name="identifier" id="e-identifier"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Status</label><input name="status" id="e-status"></div>
+                <div class="form-group"><label>Owner</label><input name="owner" id="e-owner"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Layer</label><input name="layer" id="e-layer"></div>
+                <div class="form-group"><label>Dirty Grade</label><input name="dirty_grade" id="e-dirty_grade"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Component</label><input name="component" id="e-component"></div>
+                <div class="form-group"><label>Ownership</label><input name="ownership" id="e-ownership"></div>
+            </div>
+            <div class="form-group"><label>Full Address</label><input name="full_address" id="e-full_address"></div>
+            <div class="form-row">
+                <div class="form-group"><label>Street</label><input name="street" id="e-street"></div>
+                <div class="form-group"><label>City</label><input name="city" id="e-city"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>State</label><input name="state" id="e-state"></div>
+                <div class="form-group"><label>Zip</label><input name="zip" id="e-zip"></div>
+                <div class="form-group"><label>Country</label><input name="country" id="e-country"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Founding Year</label><input name="founding_year" id="e-founding_year"></div>
+                <div class="form-group"><label>Duplicate?</label><input name="duplicate" id="e-duplicate"></div>
+            </div>
+            <div class="form-group"><label>Notes</label><textarea name="notes" id="e-notes"></textarea></div>
+
+            <h3 class="form-section">Contact Info</h3>
+            <div class="form-row">
+                <div class="form-group"><label>Contact Name</label><input name="contact_name" id="e-contact_name"></div>
+                <div class="form-group"><label>Contact Title</label><input name="contact_title" id="e-contact_title"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Email</label><input name="email" id="e-email"></div>
+                <div class="form-group"><label>Phone/LinkedIn</label><input name="phone_linkedin" id="e-phone_linkedin"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Warm Intro?</label><input name="warm_intro" id="e-warm_intro"></div>
+                <div class="form-group"><label>Other</label><input name="other" id="e-other"></div>
+            </div>
+            <div class="form-group"><label>Notes 2</label><textarea name="notes2" id="e-notes2"></textarea></div>
+
+            <h3 class="form-section">Outreach Touches</h3>
+            {% for i in range(1, 8) %}
+            <div class="form-row">
+                <div class="form-group"><label>Touch {{ i }} Date</label><input name="touch_{{ i }}_date" id="e-touch_{{ i }}_date" type="text" placeholder="YYYY-MM-DD"></div>
+                <div class="form-group"><label>Touch {{ i }} Channel</label><input name="touch_{{ i }}_channel" id="e-touch_{{ i }}_channel"></div>
+            </div>
+            {% endfor %}
+            <div class="form-row">
+                <div class="form-group"><label>Response Date</label><input name="response_date" id="e-response_date" type="text" placeholder="YYYY-MM-DD"></div>
+                <div class="form-group"><label>Engaged Date</label><input name="engaged_date" id="e-engaged_date" type="text" placeholder="YYYY-MM-DD"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn" onclick="closeModal('edit-modal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+const editFields = [
+    'company_name','identifier','duplicate','status','owner','layer','dirty_grade',
+    'component','full_address','street','city','state','zip','country','founding_year',
+    'ownership','notes','contact_name','contact_title','email','other','warm_intro',
+    'phone_linkedin','notes2',
+    'touch_1_date','touch_1_channel','touch_2_date','touch_2_channel',
+    'touch_3_date','touch_3_channel','touch_4_date','touch_4_channel',
+    'touch_5_date','touch_5_channel','touch_6_date','touch_6_channel',
+    'touch_7_date','touch_7_channel','response_date','engaged_date'
+];
+
+async function editLead(id) {
+    const res = await fetch('/leads/' + id + '/json');
+    const data = await res.json();
+    document.getElementById('edit-form').action = '/leads/' + id + '/edit';
+    editFields.forEach(f => {
+        const el = document.getElementById('e-' + f);
+        if (el) el.value = data[f] || '';
+    });
+    openModal('edit-modal');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
+});
+</script>
+{% endblock %}

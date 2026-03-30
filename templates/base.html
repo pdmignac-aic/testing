@@ -13,13 +13,10 @@
         </div>
         <ul class="nav-links">
             <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a></li>
-            <li><a href="/contacts" class="{% if '/contacts' in request.path %}active{% endif %}">Contacts</a></li>
-            <li><a href="/companies" class="{% if '/companies' in request.path %}active{% endif %}">Companies</a></li>
-            <li><a href="/deals" class="{% if '/deals' in request.path %}active{% endif %}">Deals</a></li>
-            <li><a href="/interactions" class="{% if '/interactions' in request.path %}active{% endif %}">Interactions</a></li>
+            <li><a href="/leads" class="{% if '/leads' in request.path %}active{% endif %}">Leads</a></li>
             <li class="nav-divider"></li>
             <li><a href="/query" class="{% if '/query' in request.path %}active{% endif %}">SQL Query</a></li>
-            <li><a href="/import" class="{% if '/import' in request.path %}active{% endif %}">Import Data</a></li>
+            <li><a href="/import" class="{% if '/import' in request.path %}active{% endif %}">Import CSV</a></li>
         </ul>
     </nav>
     <main class="content">

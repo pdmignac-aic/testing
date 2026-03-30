@@ -4,7 +4,7 @@
 <h1>SQL Query</h1>
 
 <div class="query-editor">
-    <textarea id="sql-input" placeholder="SELECT * FROM contacts LIMIT 10;">SELECT * FROM contacts LIMIT 10;</textarea>
+    <textarea id="sql-input" placeholder="SELECT * FROM leads LIMIT 20;">SELECT * FROM leads LIMIT 20;</textarea>
     <div class="query-actions">
         <button class="btn btn-primary" onclick="runQuery()">Run Query</button>
         <span class="query-status" id="query-status"></span>
@@ -12,7 +12,7 @@
 </div>
 
 <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 14px;">
-    Tables: <strong>contacts</strong>, <strong>companies</strong>, <strong>deals</strong>, <strong>interactions</strong> &mdash; Only SELECT queries allowed.
+    Table: <strong>leads</strong> &mdash; Only SELECT queries allowed.
 </p>
 
 <div class="table-container" id="results-container" style="display:none;">
@@ -25,12 +25,16 @@
 <div class="query-editor" style="margin-top: 20px;">
     <h3 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">Quick Queries</h3>
     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM contacts ORDER BY created_at DESC')">All Contacts</button>
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM companies ORDER BY name')">All Companies</button>
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT * FROM deals ORDER BY value DESC')">Deals by Value</button>
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT stage, COUNT(*) as count, SUM(value) as total FROM deals GROUP BY stage')">Pipeline Summary</button>
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT c.first_name, c.last_name, c.email, co.name as company FROM contacts c LEFT JOIN companies co ON c.company_id = co.id')">Contacts + Companies</button>
-        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT d.title, d.value, d.stage, c.first_name || \' \' || c.last_name as contact, co.name as company FROM deals d LEFT JOIN contacts c ON d.contact_id = c.id LEFT JOIN companies co ON d.company_id = co.id ORDER BY d.value DESC')">Full Deal View</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, status, owner, layer, component, contact_name, email FROM leads ORDER BY company_name')">All Leads Overview</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT status, COUNT(*) as count FROM leads GROUP BY status ORDER BY count DESC')">Count by Status</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT layer, COUNT(*) as count FROM leads GROUP BY layer ORDER BY count DESC')">Count by Layer</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT owner, COUNT(*) as count FROM leads GROUP BY owner ORDER BY count DESC')">Count by Owner</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, contact_name, email, response_date, engaged_date FROM leads WHERE response_date != \"\" ORDER BY response_date DESC')">Responded Leads</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, contact_name, engaged_date FROM leads WHERE engaged_date != \"\" ORDER BY engaged_date DESC')">Engaged Leads</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, contact_name, touch_1_date, touch_1_channel, touch_2_date, touch_2_channel, touch_3_date, touch_3_channel FROM leads WHERE touch_1_date != \"\" ORDER BY touch_1_date DESC')">Outreach Timeline</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT state, COUNT(*) as count FROM leads WHERE state != \"\" GROUP BY state ORDER BY count DESC')">By State</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, contact_name, warm_intro FROM leads WHERE warm_intro != \"\" AND lower(warm_intro) != \"no\"')">Warm Intros</button>
+        <button class="btn btn-sm btn-primary" onclick="setQuery('SELECT company_name, contact_name, dirty_grade FROM leads WHERE dirty_grade != \"\" ORDER BY dirty_grade')">By Dirty Grade</button>
     </div>
 </div>
 {% endblock %}
@@ -49,6 +53,7 @@ async function runQuery() {
 
     if (!sql) return;
     status.textContent = 'Running...';
+    status.style.color = 'var(--text-muted)';
 
     try {
         const res = await fetch('/query/run', {
@@ -72,7 +77,7 @@ async function runQuery() {
         const body = document.getElementById('results-body');
         head.innerHTML = '<tr>' + data.columns.map(c => '<th>' + c + '</th>').join('') + '</tr>';
         body.innerHTML = data.rows.map(r =>
-            '<tr>' + data.columns.map(c => '<td>' + (r[c] !== null ? r[c] : '-') + '</td>').join('') + '</tr>'
+            '<tr>' + data.columns.map(c => '<td>' + (r[c] !== null && r[c] !== '' ? r[c] : '-') + '</td>').join('') + '</tr>'
         ).join('');
         container.style.display = 'block';
     } catch (e) {
