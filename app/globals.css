@@ -1,20 +1,122 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
 html,
 body {
-  height: 100%;
+  background: #0a0a0a;
+  color: #ededed;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100dvh;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: #0b0d10;
-  color: #e6e8eb;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 button {
   font-family: inherit;
+}
+
+.leaflet-container {
+  background: #0a0a0a !important;
+  outline: none;
+}
+
+.leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.6) !important;
+  color: #6a6a6a !important;
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 9px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #9a9a9a !important;
+}
+
+.leaflet-control-zoom a {
+  background: #111 !important;
+  color: #ededed !important;
+  border: 1px solid #222 !important;
+  font-family: "JetBrains Mono", monospace !important;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+}
+
+.user-dot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.user-dot__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ff2e2e;
+  box-shadow: 0 0 0 2px #0a0a0a;
+}
+
+.user-dot__ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff2e2e;
+  animation: pulse-ring 1.6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.pixel {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.04) 1px,
+    transparent 1px
+  );
+  background-size: 2px 2px;
+  pointer-events: none;
+  mix-blend-mode: overlay;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "crm-pipeline",
+  "name": "caught",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,23 +7,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "tsx supabase/seed.ts"
+    "scrape-cams": "tsx scripts/scrape-cameras.ts"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.45.4",
+    "leaflet": "^1.9.4",
     "next": "^14.2.32",
-    "papaparse": "^5.4.1",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "react-leaflet": "^4.2.1"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.12",
     "@types/node": "^20",
-    "@types/papaparse": "^5.3.14",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.20",
-    "dotenv": "^16.4.5",
     "eslint": "^8",
     "eslint-config-next": "^14.2.32",
     "postcss": "^8.4.47",

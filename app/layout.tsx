@@ -1,9 +1,18 @@
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "CRM Pipeline",
-  description: "Internal sales pipeline CRM",
+  title: "CAUGHT",
+  description:
+    "The cams are watching. Now you have the footage. A passive paparazzi reel of your day in NYC.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({

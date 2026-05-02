@@ -1,106 +1,112 @@
-# CRM Pipeline
+# Caught
 
-Internal CRM web app that replaces the pipeline spreadsheet. Built with:
+A passive paparazzi reel of your day in NYC. The cams are watching, and now
+you have the footage.
 
-- **Next.js 14** (App Router) on **Vercel**
-- **Supabase** for Postgres + Auth (magic-link login)
-- Single "Pipeline" page: filterable table, add/upload companies, SQL query bar
+You walk around the city. In the background the app polls your location and,
+when you pass within ~75 m of an [NYC DOT traffic camera][nyc-dot], grabs the
+current frame from that cam. Tap **Make my montage** at the end and get a
+15-second vertical mp4 — grainy, candid, low-res — ready to share.
 
-All authenticated teammates can read, add, upload, and run read-only SQL queries.
+Built for a 5-minute live demo. No accounts, no backend, all client-side.
 
----
+[nyc-dot]: https://webcams.nyctmc.org/
 
-## 1. Prerequisites
-
-- Node.js 20+
-- A [Supabase](https://supabase.com) project (free tier is fine)
-- A [Vercel](https://vercel.com) account
-- (Optional) A company email domain to restrict logins to
-
-## 2. Supabase setup
-
-1. Create a new Supabase project. Copy the **Project URL**, **anon public key**, and **service role key** from *Project Settings → API*.
-2. In the Supabase SQL editor, paste the contents of `supabase/migrations/20260416_init.sql` and run it. This creates the `companies` table, RLS policies, and the `run_readonly_query` RPC.
-3. In *Authentication → Providers*, enable **Email** (magic link is on by default).
-4. (Optional) In *Authentication → URL Configuration*, add your production URL (Vercel) plus `http://localhost:3000` to the allowed redirect URLs.
-
-## 3. Local setup
+## Quick start
 
 ```bash
-cp .env.example .env.local
-# Fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-# Optional: ALLOWED_EMAIL_DOMAIN=yourcompany.com
-
 npm install
-npm run seed                 # imports the `pipeline` CSV into Supabase
-npm run dev                  # http://localhost:3000
+npm run dev          # http://localhost:3000
 ```
 
-The seed script reads `./pipeline` by default. To point it elsewhere:
+That's it. There are no required env vars.
+
+For a production build:
+
 ```bash
-npm run seed -- /absolute/path/to/pipeline.csv
+npm run build && npm start
 ```
 
-## 4. Deploy to Vercel
+## How it works
 
-1. Push this repo to GitHub (already done if you're reading this on the feature branch).
-2. In Vercel, **Import Project** from the GitHub repo.
-3. Set environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN` (optional, e.g. `yourcompany.com`)
-4. Deploy. Add the Vercel URL to Supabase *Authentication → URL Configuration* as an allowed redirect.
+- **Cam list** — `/api/cameras` proxies the NYC DOT cam list from
+  `https://webcams.nyctmc.org/api/cameras`, normalises it, and caches it for 6
+  hours. If you want a fully baked static list, run `npm run scrape-cams`
+  and the route will prefer that JSON file.
+- **Cam image** — `/api/cam-image?id={uuid}` proxies the live still from
+  `https://webcams.nyctmc.org/api/cameras/{uuid}/image`. Proxying sidesteps
+  any CORS / Referer requirements.
+- **Capture loop** — when you tap **Start catching**, the app uses
+  `navigator.geolocation.watchPosition` plus a 30 s `setInterval`
+  fallback. On every position update it finds cams within 75 m and fires a
+  capture for any cam not captured in the last 90 s.
+- **Storage** — capture metadata in `localStorage`, image blobs in
+  `IndexedDB`. No server.
+- **Montage** — render frames into a 720×1280 canvas, capture with
+  `MediaStream` + `MediaRecorder`, total 15 s. Output is mp4 if the browser
+  supports it, otherwise webm.
+- **Map** — Leaflet + CartoDB Dark Matter tiles. ~900 cam dots rendered with
+  `preferCanvas` for performance. Cams within 75 m turn red; user location is
+  the pulsing red dot.
 
-## 5. Using the app
+## Demo path
 
-- **Sign in**: magic link to your work email.
-- **Filter**: use the filter bar to narrow by Owner/Status/Layer/Grade/Territory, plus free-text search. "Mine only" narrows to rows whose `Owner` field contains your email's local part (heuristic; see "Known limitations" below).
-- **Add company**: click *Add company* to create a new row.
-- **Upload CSV**: click *Upload CSV*; column headers must match the original pipeline schema. Unknown columns are ignored, rows without `Company Name` are skipped.
-- **SQL bar**: write a `SELECT`/`WITH` query and hit Run. Only one statement at a time, capped at 5,000 rows.
+1. Hand the phone to a judge. Tap **Start catching**.
+2. Walk for ~5 min. The status pill turns red and shows nearby cam count.
+3. Open **Roll** — captures appear in chronological grid.
+4. Open **Montage** → **Make my montage** → 15 s vertical video.
+5. **Share** uses the Web Share API on iOS/Android, falls back to download.
 
-## 6. Security model (v1)
+### Fallbacks (because live demos die)
 
-- Every teammate with an allowed email can read, insert, update, delete, and run SQL.
-- The SQL bar is server-validated to reject anything that isn't a single `SELECT`/`WITH` statement. Dangerous keywords (`insert`, `update`, `delete`, `drop`, `alter`, etc.) are blocked. Results capped at 5,000 rows. This is defense in depth on top of Postgres-level permissions, not a replacement for them.
-- Service-role key stays on the server only (Vercel env var, never exposed to the browser).
+- **CATCH NOW** — visible at all times. Captures from your nearest cam (or a
+  random midtown cam if no location yet). Bypasses the 75 m gate.
+- **Demo roll** — long-press the **CAUGHT** logo for ~1.2 s. Seeds the roll
+  with 12 live frames from random midtown cams. Use this if walking around
+  isn't producing captures.
 
-## 7. Known limitations / next steps
+## Aesthetic rules (non-negotiable)
 
-- "Mine only" uses email local-part matching against the `Owner` string. To be precise, add a `user_id uuid` column to `companies` and a lookup table of owner email → display name.
-- Row-level update/delete from the UI isn't built yet. It's one form away — the RLS policy already allows it.
-- Multiple views (by Owner, by Layer, pivot dashboards) can be added later; for now the combined page with filters replaces them.
-- No audit log yet. Add a trigger that writes to a `companies_audit` table when we need it.
+- Cam frames are displayed at native resolution. No upscaling, no AI
+  enhancement, no filters that "fix" the grain (`image-rendering: pixelated`).
+- Dark only. Black background, JetBrains Mono, lots of negative space.
+- Captions are timestamps and street names only — nothing else.
 
-## 8. File map
+## File map
 
 ```
 app/
-  layout.tsx                    root layout
-  page.tsx                      redirects to /pipeline
-  login/page.tsx                magic-link login form
-  auth/callback/route.ts        OAuth-style callback, exchanges code for session
-  auth/signout/route.ts         POST /auth/signout
-  pipeline/
-    page.tsx                    server component, loads rows
-    PipelineClient.tsx          client wrapper, state
-    FilterBar.tsx               filter controls
-    DataGrid.tsx                sortable table
-    AddCompanyDialog.tsx        "Add company" modal
-    UploadCsvDialog.tsx         CSV upload modal
-    SqlQueryBar.tsx             read-only SQL bar
+  layout.tsx                root layout (mono font, viewport)
+  globals.css               dark theme, Leaflet overrides, pulse animation
+  page.tsx                  main app — modes, capture loop, toasts, demo seed
+  components/
+    HeaderBar.tsx           CAUGHT logo + status pill + tab nav
+    Controls.tsx            CATCH NOW + Start/Stop catching
+    MapView.tsx             SSR-safe wrapper (dynamic import)
+    MapInner.tsx            Leaflet map, cam dots, user pulse
+    RollGrid.tsx            grid of captures + lightbox
+    MontageView.tsx         render and share the 15 s mp4
+  lib/
+    types.ts                Camera, Capture
+    geo.ts                  haversine, nearby/nearest cams
+    cameras.ts              client cache + image URL helper
+    capture.ts              fetch + persist a single capture
+    store.ts                localStorage roll + IndexedDB blobs
+    montage.ts              canvas slideshow + MediaRecorder
   api/
-    companies/route.ts          POST create
-    companies/upload/route.ts   POST CSV bulk insert
-    sql/route.ts                POST read-only SQL
-lib/
-  supabase/server.ts            server client (cookies)
-  supabase/client.ts            browser client
-  schema.ts                     Company type + CSV column map
-  csv.ts                        CSV row coercion + date normalization
-supabase/
-  migrations/20260416_init.sql  schema + RLS + RPC
-  seed.ts                       bulk import script
-middleware.ts                   redirect unauthenticated users to /login
+    cameras/route.ts        cam list proxy + cache
+    cam-image/route.ts      single cam image proxy
+scripts/
+  scrape-cameras.ts         optional pre-bake of cam list
 ```
+
+## Known limitations
+
+- iOS Safari throttles geolocation and timers when the tab is backgrounded.
+  The status pill nudges users to keep the tab visible; manual capture is the
+  fallback.
+- `MediaRecorder` mp4 support varies. We try mp4 first, then webm. iOS 17.4+
+  supports mp4 directly; older browsers fall back to webm and
+  Web Share Sheet still ingests both.
+- localStorage caps at ~5 MB across browsers; only the metadata lives there.
+  Image blobs are in IndexedDB which has much more headroom.
