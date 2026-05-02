@@ -5,17 +5,23 @@ import Controls from "./components/Controls";
 import MapView from "./components/MapView";
 import RollGrid from "./components/RollGrid";
 import MontageView from "./components/MontageView";
+import CaptureBanner, { type BurstState } from "./components/CaptureBanner";
+import CaptureFlash, { triggerFlash } from "./components/CaptureFlash";
 import type { Camera, Capture } from "./lib/types";
 import { loadCameras } from "./lib/cameras";
 import { nearbyCameras, nearestCamera } from "./lib/geo";
 import { captureFromCam } from "./lib/capture";
 import { loadRoll } from "./lib/store";
+import { armAudio, playShutter } from "./lib/sound";
 
 type Mode = "map" | "roll" | "montage";
 
 const PROXIMITY_M = 75;
-const PER_CAM_COOLDOWN_MS = 90_000;
 const POLL_MS = 30_000;
+const BURST_COUNT = 5;
+const BURST_INTERVAL_MS = 1100;
+const WARMUP_MS = 1500;
+const PER_CAM_COOLDOWN_MS = 180_000;
 const MIDTOWN_BBOX = {
   minLat: 40.74,
   maxLat: 40.78,
@@ -24,6 +30,8 @@ const MIDTOWN_BBOX = {
 };
 
 type Toast = { id: number; text: string; sub?: string };
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export default function Page() {
   const [cams, setCams] = useState<Camera[]>([]);
@@ -35,11 +43,14 @@ export default function Page() {
   const [roll, setRoll] = useState<Capture[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [busy, setBusy] = useState(false);
-  const lastCamCaptureRef = useRef<Map<string, number>>(new Map());
+  const [burst, setBurst] = useState<BurstState | null>(null);
+
+  const lastBurstAtRef = useRef<Map<string, number>>(new Map());
+  const burstingRef = useRef<Set<string>>(new Set());
   const watchIdRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load roll from storage on mount
+  // Load roll on mount
   useEffect(() => {
     setRoll(loadRoll());
   }, []);
@@ -64,29 +75,63 @@ export default function Page() {
     setToasts((t) => [...t, { id, text, sub }]);
     setTimeout(() => {
       setToasts((t) => t.filter((x) => x.id !== id));
-    }, 3000);
+    }, 2600);
   }, []);
 
-  const handleCapture = useCallback(
-    async (cam: Camera, source: Capture["source"]) => {
+  const runBurst = useCallback(
+    async (cam: Camera, source: Capture["source"] = "auto") => {
+      if (burstingRef.current.has(cam.id)) return;
+      const now = Date.now();
+      const last = lastBurstAtRef.current.get(cam.id) ?? 0;
+      if (now - last < PER_CAM_COOLDOWN_MS) return;
+      burstingRef.current.add(cam.id);
+      lastBurstAtRef.current.set(cam.id, now);
+
       try {
-        const cap = await captureFromCam(cam, source);
-        lastCamCaptureRef.current.set(cam.id, Date.now());
-        setRoll((r) => {
-          const next = [...r, cap].sort(
-            (a, b) => a.capturedAt - b.capturedAt
-          );
-          return next;
+        // Warmup banner — heads-up before first shot
+        setBurst({
+          camId: cam.id,
+          camName: cam.name,
+          total: BURST_COUNT,
+          shotsTaken: 0,
+          phase: "warmup",
         });
-        pushToast("CAUGHT", cam.name);
-      } catch (e: any) {
-        pushToast("MISS", e?.message ?? "fetch failed");
+        await sleep(WARMUP_MS);
+
+        setBurst((b) =>
+          b && b.camId === cam.id ? { ...b, phase: "shooting" } : b
+        );
+
+        for (let i = 0; i < BURST_COUNT; i++) {
+          try {
+            const cap = await captureFromCam(cam, source);
+            playShutter();
+            triggerFlash();
+            setRoll((r) =>
+              [...r, cap].sort((a, b) => a.capturedAt - b.capturedAt)
+            );
+            setBurst((b) =>
+              b && b.camId === cam.id ? { ...b, shotsTaken: i + 1 } : b
+            );
+          } catch (e: any) {
+            pushToast("MISS", e?.message ?? "fetch failed");
+          }
+          if (i < BURST_COUNT - 1) await sleep(BURST_INTERVAL_MS);
+        }
+
+        setBurst((b) =>
+          b && b.camId === cam.id ? { ...b, phase: "done" } : b
+        );
+        await sleep(900);
+        setBurst((b) => (b && b.camId === cam.id ? null : b));
+      } finally {
+        burstingRef.current.delete(cam.id);
       }
     },
     [pushToast]
   );
 
-  // Geolocation: track position when catching
+  // Geolocation watcher
   useEffect(() => {
     if (!catching) {
       if (watchIdRef.current != null) {
@@ -112,7 +157,7 @@ export default function Page() {
       });
     };
     const onErr = (err: GeolocationPositionError) => {
-      pushToast("GEO ERR", err.message);
+      pushToast("GEO", err.message);
     };
     watchIdRef.current = navigator.geolocation.watchPosition(onPos, onErr, {
       enableHighAccuracy: true,
@@ -138,7 +183,6 @@ export default function Page() {
     };
   }, [catching, pushToast]);
 
-  // Capture loop: react to position + cams
   const nearby = useMemo(() => {
     if (!position || cams.length === 0) return [];
     return nearbyCameras(cams, position.lat, position.lng, PROXIMITY_M);
@@ -149,22 +193,30 @@ export default function Page() {
     [nearby]
   );
 
+  const burstingIds = useMemo(() => {
+    return new Set(burst ? [burst.camId] : []);
+  }, [burst]);
+
+  // Trigger bursts for cams in range
   useEffect(() => {
     if (!catching || nearby.length === 0) return;
-    const now = Date.now();
     for (const { cam } of nearby) {
-      const last = lastCamCaptureRef.current.get(cam.id) ?? 0;
-      if (now - last < PER_CAM_COOLDOWN_MS) continue;
-      lastCamCaptureRef.current.set(cam.id, now); // optimistic
-      handleCapture(cam, "auto");
+      if (burstingRef.current.has(cam.id)) continue;
+      const last = lastBurstAtRef.current.get(cam.id) ?? 0;
+      if (Date.now() - last < PER_CAM_COOLDOWN_MS) continue;
+      runBurst(cam, "auto");
     }
-  }, [catching, nearby, handleCapture]);
+  }, [catching, nearby, runBurst]);
 
   const onToggle = useCallback(() => {
     setCatching((c) => {
       const next = !c;
-      if (next) pushToast("STARTED", "keep this tab visible");
-      else pushToast("STOPPED");
+      if (next) {
+        armAudio(); // unlock iOS audio inside the user gesture
+        pushToast("CATCHING", "keep this tab visible");
+      } else {
+        pushToast("STOPPED");
+      }
       return next;
     });
   }, [pushToast]);
@@ -174,6 +226,7 @@ export default function Page() {
       pushToast("NO CAMS", "still loading");
       return;
     }
+    armAudio();
     setBusy(true);
     try {
       let target: Camera | null = null;
@@ -182,7 +235,6 @@ export default function Page() {
         if (n) target = n.cam;
       }
       if (!target) {
-        // fallback: random midtown cam
         const pool = cams.filter(
           (c) =>
             c.latitude >= MIDTOWN_BBOX.minLat &&
@@ -193,17 +245,20 @@ export default function Page() {
         const fromPool = pool.length ? pool : cams;
         target = fromPool[Math.floor(Math.random() * fromPool.length)];
       }
-      await handleCapture(target, "manual");
+      // Reset cooldown so manual taps always work
+      lastBurstAtRef.current.delete(target.id);
+      await runBurst(target, "manual");
     } finally {
       setBusy(false);
     }
-  }, [cams, position, handleCapture, pushToast]);
+  }, [cams, position, runBurst, pushToast]);
 
   const loadDemoRoll = useCallback(async () => {
     if (cams.length === 0) {
       pushToast("NO CAMS", "still loading");
       return;
     }
+    armAudio();
     pushToast("DEMO", "seeding 12 frames");
     const pool = cams.filter(
       (c) =>
@@ -217,22 +272,24 @@ export default function Page() {
     const picks = shuffled.slice(0, 12);
     for (const cam of picks) {
       try {
-        await captureFromCam(cam, "demo");
-        // stagger the captured timestamps so they look like a walk
-        // (capturedAt is set to Date.now in the lib; that's fine for demo)
-        await new Promise((r) => setTimeout(r, 250));
+        const cap = await captureFromCam(cam, "demo");
+        setRoll((r) =>
+          [...r, cap].sort((a, b) => a.capturedAt - b.capturedAt)
+        );
+        playShutter();
+        triggerFlash();
+        await sleep(220);
       } catch {
-        /* swallow per-cam */
+        /* swallow */
       }
     }
-    setRoll(loadRoll());
     pushToast("DEMO READY", "open Montage");
   }, [cams, pushToast]);
 
   const catchNowLabel = busy ? "CATCHING…" : "CATCH NOW";
 
   return (
-    <main className="fixed inset-0 bg-ink overflow-hidden">
+    <main className="fixed inset-0 bg-cream overflow-hidden">
       <HeaderBar
         mode={mode}
         setMode={setMode}
@@ -248,10 +305,10 @@ export default function Page() {
             {camsError ? (
               <div className="h-full grid place-items-center text-center px-8">
                 <div>
-                  <p className="text-blood text-xs uppercase mb-2">
+                  <p className="text-coral text-xs uppercase tracking-widest mb-2">
                     Cam list failed
                   </p>
-                  <p className="text-smoke text-[11px]">{camsError}</p>
+                  <p className="text-ash text-[11px]">{camsError}</p>
                 </div>
               </div>
             ) : (
@@ -259,15 +316,16 @@ export default function Page() {
                 cameras={cams}
                 position={position}
                 nearbyIds={nearbyIds}
+                burstingIds={burstingIds}
               />
             )}
           </div>
         )}
-        {mode === "roll" && (
-          <RollGrid roll={roll} onChange={setRoll} />
-        )}
+        {mode === "roll" && <RollGrid roll={roll} onChange={setRoll} />}
         {mode === "montage" && <MontageView roll={roll} />}
       </div>
+
+      <CaptureBanner burst={burst} />
 
       <Controls
         catching={catching}
@@ -275,20 +333,28 @@ export default function Page() {
         onCatchNow={onCatchNow}
         catchNowDisabled={busy || cams.length === 0}
         catchNowLabel={catchNowLabel}
+        accuracyM={position?.accuracy ?? null}
+        nearbyCount={nearby.length}
+        rollCount={roll.length}
+        hasPosition={!!position}
       />
 
-      <div className="fixed bottom-24 left-0 right-0 z-50 flex flex-col items-center gap-1 px-4 pointer-events-none">
+      <div className="fixed bottom-32 left-0 right-0 z-50 flex flex-col items-center gap-1 px-4 pointer-events-none">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="bg-black/90 border border-neutral-800 px-3 py-2 text-[10px] uppercase tracking-widest text-bone"
+            className="toast-enter bg-ink/90 text-chalk border border-cobalt/40 px-3 py-2 text-[10px] uppercase tracking-widest rounded-md backdrop-blur"
           >
-            <span className="text-blood mr-2">●</span>
+            <span className="text-coral mr-2">●</span>
             {t.text}
-            {t.sub ? <span className="text-smoke ml-2">— {t.sub}</span> : null}
+            {t.sub ? (
+              <span className="text-chalk/70 ml-2">— {t.sub}</span>
+            ) : null}
           </div>
         ))}
       </div>
+
+      <CaptureFlash />
     </main>
   );
 }

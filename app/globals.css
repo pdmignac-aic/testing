@@ -1,16 +1,25 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --cream: #f7f1e3;
+  --chalk: #fffdf6;
+  --paper: #efe6d2;
+  --cobalt: #1d3fb3;
+  --cobalt-light: #3458d4;
+  --cobalt-deep: #0c1f6b;
+  --ink: #0a1746;
+  --ash: #6b7790;
+  --coral: #ff4d4d;
 }
 
 html,
 body {
-  background: #0a0a0a;
-  color: #ededed;
+  background: var(--cream);
+  color: var(--ink);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
@@ -30,44 +39,45 @@ button {
   font-family: inherit;
 }
 
+/* --- Leaflet light theme --- */
 .leaflet-container {
-  background: #0a0a0a !important;
+  background: var(--cream) !important;
   outline: none;
+  font-family: inherit;
+}
+
+.leaflet-tile-pane {
+  filter: saturate(0.9) contrast(0.97) brightness(1.02);
 }
 
 .leaflet-control-attribution {
-  background: rgba(0, 0, 0, 0.6) !important;
-  color: #6a6a6a !important;
+  background: rgba(247, 241, 227, 0.8) !important;
+  color: var(--ash) !important;
   font-family: "JetBrains Mono", monospace !important;
   font-size: 9px !important;
+  border-top-left-radius: 6px;
 }
 
 .leaflet-control-attribution a {
-  color: #9a9a9a !important;
+  color: var(--cobalt) !important;
 }
 
-.leaflet-control-zoom a {
-  background: #111 !important;
-  color: #ededed !important;
-  border: 1px solid #222 !important;
-  font-family: "JetBrains Mono", monospace !important;
-}
-
+/* --- User pulse dot (coral) --- */
 @keyframes pulse-ring {
   0% {
     transform: translate(-50%, -50%) scale(0.4);
     opacity: 0.9;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.6);
+    transform: translate(-50%, -50%) scale(2.8);
     opacity: 0;
   }
 }
 
 .user-dot {
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   pointer-events: none;
 }
 
@@ -75,25 +85,84 @@ button {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: #ff2e2e;
-  box-shadow: 0 0 0 2px #0a0a0a;
+  background: var(--coral);
+  box-shadow: 0 0 0 3px var(--cream), 0 2px 6px rgba(255, 77, 77, 0.5);
 }
 
 .user-dot__ring {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #ff2e2e;
+  background: var(--coral);
   animation: pulse-ring 1.6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
 }
 
+/* --- Capture flash --- */
+@keyframes shot-flash {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.flash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: #ffffff;
+  opacity: 0;
+}
+
+.flash-overlay.flash-on {
+  animation: shot-flash 360ms ease-out;
+}
+
+/* --- Capture banner slide --- */
+@keyframes banner-in {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.banner-enter {
+  animation: banner-in 220ms ease-out;
+}
+
+/* --- Toast slide --- */
+@keyframes toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast-enter {
+  animation: toast-in 200ms ease-out;
+}
+
+/* --- Misc utilities --- */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -112,11 +181,20 @@ button {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(
-    rgba(255, 255, 255, 0.04) 1px,
-    transparent 1px
-  );
+  background-image: radial-gradient(rgba(10, 23, 70, 0.05) 1px, transparent 1px);
   background-size: 2px 2px;
   pointer-events: none;
-  mix-blend-mode: overlay;
+  mix-blend-mode: multiply;
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.pulse-soft {
+  animation: pulse-soft 1.4s ease-in-out infinite;
 }

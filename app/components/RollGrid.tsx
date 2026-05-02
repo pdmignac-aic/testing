@@ -41,17 +41,25 @@ export default function RollGrid({ roll, onChange }: Props) {
 
   if (roll.length === 0) {
     return (
-      <div className="h-full grid place-items-center text-smoke text-xs px-8 text-center">
-        NO CAUGHT FRAMES YET.
-        <br />
-        START CATCHING OR USE MANUAL CAPTURE.
+      <div className="h-full grid place-items-center px-8 text-center">
+        <div className="max-w-[280px]">
+          <div className="text-cobalt text-xs uppercase tracking-widest mb-2">
+            No frames yet
+          </div>
+          <p className="text-ash text-[11px] leading-relaxed">
+            Tap <span className="text-cobalt font-semibold">START CATCHING</span> and
+            walk past a NYC traffic cam — or hit{" "}
+            <span className="text-cobalt font-semibold">CATCH NOW</span> for an
+            instant grab.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto no-scrollbar pb-40">
-      <div className="grid grid-cols-2 gap-1 p-1">
+    <div className="h-full overflow-y-auto no-scrollbar pb-44">
+      <div className="grid grid-cols-2 gap-2 p-3">
         {roll
           .slice()
           .reverse()
@@ -59,7 +67,7 @@ export default function RollGrid({ roll, onChange }: Props) {
             <button
               key={c.id}
               onClick={() => setOpen(c)}
-              className="relative aspect-[4/3] bg-black overflow-hidden text-left grain"
+              className="relative aspect-[4/3] bg-paper overflow-hidden text-left rounded-lg border border-paper shadow-crisp grain"
             >
               {urls[c.id] ? (
                 <img
@@ -68,12 +76,14 @@ export default function RollGrid({ roll, onChange }: Props) {
                   className="w-full h-full object-cover pixel"
                 />
               ) : (
-                <div className="w-full h-full bg-neutral-900" />
+                <div className="w-full h-full bg-paper" />
               )}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-2 pt-6 pb-1.5">
-                <div className="text-[9px] text-smoke">{fmt(c.capturedAt)}</div>
-                <div className="text-[10px] text-bone truncate">
-                  {c.camName.toUpperCase()}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-ink/85 to-transparent px-2 pt-6 pb-2">
+                <div className="text-[9px] text-chalk/70 uppercase tracking-widest">
+                  {fmt(c.capturedAt)}
+                </div>
+                <div className="text-[10px] text-chalk truncate uppercase">
+                  {c.camName}
                 </div>
               </div>
             </button>
@@ -82,14 +92,14 @@ export default function RollGrid({ roll, onChange }: Props) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/95 grid place-items-center p-4"
+          className="fixed inset-0 z-50 bg-ink/85 backdrop-blur grid place-items-center p-4"
           onClick={() => setOpen(null)}
         >
           <div
             className="w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative grain bg-black">
+            <div className="relative grain bg-paper rounded-lg overflow-hidden">
               {urls[open.id] && (
                 <img
                   src={urls[open.id]}
@@ -98,10 +108,12 @@ export default function RollGrid({ roll, onChange }: Props) {
                 />
               )}
             </div>
-            <div className="pt-3 text-xs text-smoke">
+            <div className="pt-3 text-xs text-chalk/80">
+              <div className="text-chalk uppercase font-semibold tracking-wider">
+                {open.camName}
+              </div>
               <div>{new Date(open.capturedAt).toLocaleString()}</div>
-              <div className="text-bone uppercase">{open.camName}</div>
-              <div className="text-[10px] mt-1">
+              <div className="text-[10px] mt-1 text-chalk/60">
                 {open.lat.toFixed(4)}, {open.lng.toFixed(4)} · {open.source}
               </div>
             </div>
@@ -112,15 +124,15 @@ export default function RollGrid({ roll, onChange }: Props) {
                   onChange(next);
                   setOpen(null);
                 }}
-                className="flex-1 border border-neutral-800 text-smoke text-xs py-3 hover:text-blood hover:border-blood"
+                className="flex-1 border border-coral/40 text-coral bg-ink/40 text-xs py-3 rounded-lg uppercase tracking-widest"
               >
-                DELETE
+                Delete
               </button>
               <button
                 onClick={() => setOpen(null)}
-                className="flex-1 bg-bone text-ink text-xs py-3 font-bold"
+                className="flex-1 bg-chalk text-cobalt text-xs py-3 font-bold rounded-lg uppercase tracking-widest"
               >
-                CLOSE
+                Close
               </button>
             </div>
           </div>

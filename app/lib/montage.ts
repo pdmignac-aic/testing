@@ -6,6 +6,12 @@ const H = 1280;
 const TOTAL_MS = 15000;
 const FPS = 30;
 
+const COL_CREAM = "#f7f1e3";
+const COL_PAPER = "#efe6d2";
+const COL_INK = "#0a1746";
+const COL_ASH = "#6b7790";
+const COL_COBALT = "#1d3fb3";
+
 function pickMimeType(): string {
   const candidates = [
     "video/mp4;codecs=h264,aac",
@@ -55,52 +61,63 @@ function drawFrame(
   cap: Capture,
   progress: number
 ) {
-  ctx.fillStyle = "#0a0a0a";
+  // Cream paper background
+  ctx.fillStyle = COL_CREAM;
   ctx.fillRect(0, 0, W, H);
 
+  // Image area: full width, centered, slight margin from top
   const targetW = W;
   const ratio = img.naturalHeight / img.naturalWidth;
   const drawW = targetW;
   const drawH = drawW * ratio;
-  const drawY = (H - drawH) / 2 - 80;
-  // @ts-ignore
+  const drawX = 0;
+  const drawY = 110;
+  // @ts-ignore — pixelated look
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(img, 0, drawY, drawW, drawH);
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
 
-  // grain overlay
+  // Subtle paper grain over the photo
   ctx.globalAlpha = 0.08;
-  for (let i = 0; i < 200; i++) {
-    ctx.fillStyle = Math.random() > 0.5 ? "#ffffff" : "#000000";
+  for (let i = 0; i < 240; i++) {
+    ctx.fillStyle = Math.random() > 0.5 ? "#000000" : "#ffffff";
     ctx.fillRect(Math.random() * W, drawY + Math.random() * drawH, 2, 2);
   }
   ctx.globalAlpha = 1;
 
-  // Vignette
-  const grad = ctx.createRadialGradient(W / 2, H / 2, W * 0.4, W / 2, H / 2, W * 0.9);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(1, "rgba(0,0,0,0.7)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Bottom captions
-  ctx.fillStyle = "#ededed";
-  ctx.font = "700 36px 'JetBrains Mono', monospace";
+  // Top header strip
+  ctx.fillStyle = COL_INK;
+  ctx.font = "700 30px 'JetBrains Mono', monospace";
   ctx.textBaseline = "top";
-  ctx.fillText("CAUGHT", 36, H - 220);
+  ctx.fillText("CAUGHT", 36, 40);
 
-  ctx.font = "500 28px 'JetBrains Mono', monospace";
-  ctx.fillStyle = "#9a9a9a";
-  ctx.fillText(fmtTime(cap.capturedAt), 36, H - 170);
+  ctx.font = "500 22px 'JetBrains Mono', monospace";
+  ctx.fillStyle = COL_COBALT;
+  ctx.textAlign = "right";
+  ctx.fillText("FOUND FOOTAGE", W - 36, 44);
+  ctx.textAlign = "left";
 
-  ctx.font = "500 26px 'JetBrains Mono', monospace";
-  ctx.fillStyle = "#ededed";
-  const name = cap.camName.length > 36 ? cap.camName.slice(0, 36) + "…" : cap.camName;
-  ctx.fillText(name.toUpperCase(), 36, H - 130);
+  // Bottom caption block
+  ctx.fillStyle = COL_PAPER;
+  ctx.fillRect(0, H - 220, W, 220);
 
-  // progress bar
-  ctx.fillStyle = "#222";
+  ctx.fillStyle = COL_INK;
+  ctx.font = "700 30px 'JetBrains Mono', monospace";
+  const name =
+    cap.camName.length > 32 ? cap.camName.slice(0, 32) + "…" : cap.camName;
+  ctx.fillText(name.toUpperCase(), 36, H - 190);
+
+  ctx.font = "500 24px 'JetBrains Mono', monospace";
+  ctx.fillStyle = COL_ASH;
+  ctx.fillText(fmtTime(cap.capturedAt), 36, H - 150);
+
+  ctx.font = "500 20px 'JetBrains Mono', monospace";
+  ctx.fillStyle = COL_COBALT;
+  ctx.fillText(`${cap.lat.toFixed(4)}, ${cap.lng.toFixed(4)}`, 36, H - 116);
+
+  // Progress bar
+  ctx.fillStyle = "rgba(10,23,70,0.12)";
   ctx.fillRect(36, H - 60, W - 72, 4);
-  ctx.fillStyle = "#ff2e2e";
+  ctx.fillStyle = COL_COBALT;
   ctx.fillRect(36, H - 60, (W - 72) * progress, 4);
 }
 
@@ -132,7 +149,10 @@ export async function generateMontage(
 
     const stream = canvas.captureStream(FPS);
     const mime = pickMimeType();
-    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
+    const rec = new MediaRecorder(stream, {
+      mimeType: mime,
+      videoBitsPerSecond: 4_000_000,
+    });
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);

@@ -1,4 +1,5 @@
 "use client";
+import { useRef } from "react";
 
 type Mode = "map" | "roll" | "montage";
 
@@ -23,26 +24,26 @@ export default function HeaderBar({
     ? nearbyCount > 0
       ? `IN RANGE · ${nearbyCount}`
       : "CATCHING"
-    : "OFF";
+    : "READY";
 
-  let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPress = () => {
-    pressTimer = setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       onLogoLongPress();
     }, 1200);
   };
   const endPress = () => {
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-40 px-3 pt-3">
-      <div className="flex items-center justify-between text-[10px] uppercase">
+    <header className="fixed top-0 left-0 right-0 z-40 bg-cream/95 backdrop-blur border-b border-paper">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
         <button
-          className="font-bold tracking-widest text-bone select-none"
+          className="select-none text-cobalt font-bold text-base tracking-[0.18em]"
           onMouseDown={startPress}
           onMouseUp={endPress}
           onMouseLeave={endPress}
@@ -53,32 +54,38 @@ export default function HeaderBar({
         >
           CAUGHT
         </button>
+
         <div
-          className={`tracking-widest ${
-            catching ? "text-blood" : "text-smoke"
+          className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-[10px] tracking-widest ${
+            catching
+              ? "border-coral/30 bg-coral/10 text-coral"
+              : "border-cobalt/20 bg-white/60 text-cobalt"
           }`}
         >
           <span
-            className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ${
-              catching ? "bg-blood animate-pulse" : "bg-neutral-700"
+            className={`inline-block w-1.5 h-1.5 rounded-full ${
+              catching ? "bg-coral pulse-soft" : "bg-cobalt"
             }`}
           />
           {status}
         </div>
       </div>
-      <nav className="mt-3 flex bg-black/50 backdrop-blur border border-neutral-900 text-[10px] uppercase">
+
+      <nav className="px-4 pb-2 flex gap-1">
         {(
           [
             ["map", "Map"],
-            ["roll", `Roll (${rollCount})`],
+            ["roll", `Roll · ${rollCount}`],
             ["montage", "Montage"],
           ] as const
         ).map(([m, label]) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className={`flex-1 py-2 tracking-widest ${
-              mode === m ? "bg-bone text-ink" : "text-smoke"
+            className={`flex-1 py-1.5 text-[11px] tracking-widest uppercase rounded-md transition-colors ${
+              mode === m
+                ? "bg-cobalt text-chalk shadow-crisp"
+                : "text-ink/70 hover:text-cobalt"
             }`}
           >
             {label}

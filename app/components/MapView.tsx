@@ -5,8 +5,8 @@ import type { Camera } from "@/app/lib/types";
 const MapInner = dynamic(() => import("./MapInner"), {
   ssr: false,
   loading: () => (
-    <div className="h-full w-full grid place-items-center text-smoke text-xs">
-      LOADING MAP…
+    <div className="h-full w-full grid place-items-center text-ash text-xs uppercase tracking-widest">
+      Loading map…
     </div>
   ),
 });
@@ -15,6 +15,7 @@ type Props = {
   cameras: Camera[];
   position: { lat: number; lng: number; accuracy?: number } | null;
   nearbyIds: Set<string>;
+  burstingIds: Set<string>;
 };
 
 export default function MapView(props: Props) {
